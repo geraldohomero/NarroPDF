@@ -1,0 +1,173 @@
+"""Localization helper for NarroPDF supporting English and Portuguese."""
+
+from __future__ import annotations
+
+import os
+import locale
+
+# ---------------------------------------------------------------------------
+# Locale detection
+# ---------------------------------------------------------------------------
+
+LANG = "pt"
+try:
+    # Check LANG environment variable or system default
+    env_lang = os.environ.get("LANG", "")
+    if env_lang.lower().startswith("en") or locale.getdefaultlocale()[0].lower().startswith("en"):
+        LANG = "en"
+except Exception:
+    pass
+
+# ---------------------------------------------------------------------------
+# Dictionary maps
+# ---------------------------------------------------------------------------
+
+TRANSLATIONS: dict[str, dict[str, str]] = {
+    "pt": {
+        "app_name": "NarroPDF",
+        "open_pdf": "Abrir PDF",
+        "save_pdf": "Salvar alterações no PDF",
+        "prev_page": "Página anterior",
+        "next_page": "Próxima página",
+        "sidebar": "Barra lateral",
+        "main_menu": "Menu principal",
+        "continuous_view": "Visualização Contínua",
+        "keyboard_shortcuts": "Atalhos de Teclado",
+        "about_app": "Sobre o NarroPDF",
+        "zoom_out": "Diminuir Zoom",
+        "zoom_in": "Aumentar Zoom",
+        "zoom_options": "Opções de Zoom",
+        "fit_width": "Ajustar à largura",
+        "fit_page": "Ajustar à página",
+        "welcome_desc": "Abra um documento PDF para iniciar a leitura por áudio.",
+        "choose_file": "Escolher Arquivo",
+        "highlight": "Marcar Texto",
+        "underline": "Sublinhar",
+        "add_note": "Adicionar Nota",
+        "speak_selection": "Falar Seleção",
+        "audio_reading": "Leitura por Áudio",
+        "language": "Idioma",
+        "voice": "Voz",
+        "speed": "Velocidade",
+        "read_page": "Ler Página",
+        "read_selection": "Ler Seleção",
+        "extracted_text": "Texto Extraído da Página",
+        "play": "Reproduzir",
+        "pause": "Pausar",
+        "resume": "Retomar",
+        "stop": "Parar",
+        "stop_reading": "Parar leitura",
+        "loading_tts": "Gerando áudio com Edge TTS...",
+        "no_extractable_text": "A página não contém texto extraível.",
+        "select_text_prompt": "Selecione texto no painel ou arraste no PDF.",
+        "reading_with_voice": "Lendo com voz",
+        "doc_lang": "Idioma do Documento",
+        "select_doc_lang": "Selecione o idioma principal de leitura:",
+        "confirm": "Confirmar",
+        "cancel": "Cancelar",
+        "select_pdf_title": "Selecionar PDF",
+        "pdf_files_filter": "Arquivos PDF (*.pdf)",
+        "saved_copy": "Salvo uma cópia em:",
+        "saved_incremental": "Alterações salvas incrementalmente.",
+        "annot_applied": "Anotação aplicada:",
+        "document": "Documento",
+        "nav_zoom": "Navegação & Zoom",
+        "audio_shortcuts": "Áudio (Leitura)",
+        "about_comments": "Leitor e editor de documentos PDF com áudio Text-to-Speech sincronizado nativo para o GNOME.",
+        "page_of": "de",
+        "tab_pages": "Páginas",
+        "tab_chapters": "Sumário",
+        "tab_annots": "Anotações",
+        "unsaved_tooltip": "Alterações não salvas",
+        "selection_mode": "Modo Seleção",
+        "hand_mode": "Modo Mãozinha (arrastar)",
+        "annot_mode": "Modo Caneta (anotação direta)",
+        "err_pymupdf": "Erro: PyMuPDF não encontrado.",
+        "err_open_pdf": "Erro ao abrir PDF",
+        "err_apply_annot": "Erro ao aplicar anotação",
+        "no_chapters": "Sem capítulos",
+        "no_annots": "Sem marcações",
+        "choose_color": "Escolher cor",
+        "unsaved_changes_title": "Alterações não salvas",
+        "unsaved_changes_prompt": "O documento possui alterações não salvas. Deseja salvá-las antes de fechar?",
+        "discard": "Descartar",
+        "tools_and_edit": "Ferramentas & Edição",
+        "undo_action": "Desfazer",
+    },
+    "en": {
+        "app_name": "NarroPDF",
+        "open_pdf": "Open PDF",
+        "save_pdf": "Save PDF changes",
+        "prev_page": "Previous page",
+        "next_page": "Next page",
+        "sidebar": "Sidebar",
+        "main_menu": "Main menu",
+        "continuous_view": "Continuous View",
+        "keyboard_shortcuts": "Keyboard Shortcuts",
+        "about_app": "About NarroPDF",
+        "zoom_out": "Zoom Out",
+        "zoom_in": "Zoom In",
+        "zoom_options": "Zoom Options",
+        "fit_width": "Fit to width",
+        "fit_page": "Fit to page",
+        "welcome_desc": "Open a PDF document to start audio reading.",
+        "choose_file": "Choose File",
+        "highlight": "Highlight Text",
+        "underline": "Underline",
+        "add_note": "Add Note",
+        "speak_selection": "Speak Selection",
+        "audio_reading": "Audio Reading",
+        "language": "Language",
+        "voice": "Voice",
+        "speed": "Speed",
+        "read_page": "Read Page",
+        "read_selection": "Read Selection",
+        "extracted_text": "Page Extracted Text",
+        "play": "Play",
+        "pause": "Pause",
+        "resume": "Resume",
+        "stop": "Stop",
+        "stop_reading": "Stop reading",
+        "loading_tts": "Generating audio with Edge TTS...",
+        "no_extractable_text": "The page does not contain extractable text.",
+        "select_text_prompt": "Select text in the panel or drag on the PDF.",
+        "reading_with_voice": "Reading with voice",
+        "doc_lang": "Document Language",
+        "select_doc_lang": "Select the primary reading language:",
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "select_pdf_title": "Select PDF",
+        "pdf_files_filter": "PDF Files (*.pdf)",
+        "saved_copy": "Saved a copy to:",
+        "saved_incremental": "Changes saved incrementally.",
+        "annot_applied": "Annotation applied:",
+        "document": "Document",
+        "nav_zoom": "Navigation & Zoom",
+        "audio_shortcuts": "Audio (Reading)",
+        "about_comments": "PDF reader and editor with native synchronized Text-to-Speech audio for GNOME.",
+        "page_of": "of",
+        "tab_pages": "Pages",
+        "tab_chapters": "Chapters",
+        "tab_annots": "Annotations",
+        "unsaved_tooltip": "Unsaved changes",
+        "selection_mode": "Selection Mode",
+        "hand_mode": "Hand Mode (drag)",
+        "annot_mode": "Pen Mode (direct annotation)",
+        "err_pymupdf": "Error: PyMuPDF not found.",
+        "err_open_pdf": "Error opening PDF",
+        "err_apply_annot": "Error applying annotation",
+        "no_chapters": "No chapters",
+        "no_annots": "No annotations",
+        "choose_color": "Choose color",
+        "unsaved_changes_title": "Unsaved changes",
+        "unsaved_changes_prompt": "The document has unsaved changes. Do you want to save them before closing?",
+        "discard": "Discard",
+        "tools_and_edit": "Tools & Editing",
+        "undo_action": "Undo",
+    }
+}
+
+
+def _(key: str) -> str:
+    """Translate the given key based on detected language."""
+    return TRANSLATIONS[LANG].get(key, key)

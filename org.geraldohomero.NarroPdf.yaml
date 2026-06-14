@@ -1,0 +1,96 @@
+app-id: org.geraldohomero.NarroPdf
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: org.geraldohomero.NarroPdf
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=network
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=host
+
+modules:
+  - name: libass
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.la
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.1/libass-0.17.1.tar.xz
+        sha256: f0da0bbfba476c16ae3e1cfd862256d30915911f7abaa1b16ce62ee653192784
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dopengl=disabled
+      - -Dvulkan=disabled
+      - -Dglslang=disabled
+      - -Dd3d11=disabled
+      - -Ddemos=false
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.la
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.2/libplacebo-v6.338.2.tar.gz
+        sha256: d029adbe55bba8aed7aed2c48b0b66081dddfb9d42683a709342e33aa666c544
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=true
+      - -Dcuda-hwaccel=disabled
+      - -Dlua=disabled
+      - -Dvaapi=disabled
+      - -Dvdpau=disabled
+      - -Duchardet=disabled
+      - -Drubberband=disabled
+      - -Dzimg=disabled
+      - -Dlcms2=disabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.38.0.tar.gz
+        sha256: 86d9ef40b6058732f67b46d0bbda24a074fae860b3eaae05bab3145041303066
+
+  - python3-modules.json
+
+  - name: narro-pdf
+    buildsystem: simple
+    build-commands:
+      # Install executable launcher
+      - install -d /app/bin
+      - install -D narro-pdf.py /app/bin/org.geraldohomero.NarroPdf
+      - chmod +x /app/bin/org.geraldohomero.NarroPdf
+      # Install python modules and assets
+      - cp -r src /app/bin/src
+      # Install desktop launcher
+      - install -D org.geraldohomero.NarroPdf.desktop /app/share/applications/org.geraldohomero.NarroPdf.desktop
+      # Install AppStream metadata
+      - install -D org.geraldohomero.NarroPdf.metainfo.xml /app/share/metainfo/org.geraldohomero.NarroPdf.metainfo.xml
+      # Install high-res app icon
+      - install -D org.geraldohomero.NarroPdf.png /app/share/icons/hicolor/512x512/apps/org.geraldohomero.NarroPdf.png
+    sources:
+      - type: file
+        path: narro-pdf.py
+      - type: dir
+        path: src
+        dest: src
+      - type: file
+        path: flatpak/org.geraldohomero.NarroPdf.desktop
+      - type: file
+        path: flatpak/org.geraldohomero.NarroPdf.metainfo.xml
+      - type: file
+        path: flatpak/org.geraldohomero.NarroPdf.png

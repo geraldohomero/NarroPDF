@@ -1,0 +1,52 @@
+/* NarroPDF — Application Styles
+ *
+ * Uses native libadwaita CSS variables for automatic dark mode support.
+ * Avoid hardcoded colors; prefer @variable references.
+ */
+
+/* PDF page rendering area */
+.pdf-viewer-scroller {
+    background-color: @window_bg_color;
+}
+
+/* Page shadow — adapts to dark mode via alpha */
+.pdf-page-shadow {
+    box-shadow: 0 2px 12px 2px rgba(0, 0, 0, 0.10);
+    border: 1px solid alpha(@borders, 0.4);
+    border-radius: 4px;
+    background-color: white;
+    margin: 24px;
+}
+
+/* Sidebar */
+.sidebar-container {
+    background-color: @window_bg_color;
+}
+
+.sidebar-textview {
+    font-family: monospace;
+    font-size: 11pt;
+    padding: 8px;
+}
+
+/* Playback bottom bar */
+.playback-bar {
+    background-color: alpha(@card_bg_color, 0.97);
+    border-top: 1px solid @borders;
+    padding: 6px 16px;
+}
+
+.playback-bar:backdrop {
+    background-color: @card_bg_color;
+}
+
+/* Status label in the bottom bar */
+.status-label {
+    font-size: 9pt;
+    color: alpha(@window_fg_color, 0.6);
+}
+
+/* Welcome page adjustments */
+.welcome-open-btn {
+    margin-top: 12px;
+}

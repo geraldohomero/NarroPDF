@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=NarroPDF
+Comment=Leia e edite seus PDFs com áudio sincronizado e inteligente
+Exec=org.geraldohomero.NarroPdf
+Icon=org.geraldohomero.NarroPdf
+Type=Application
+Terminal=false
+Categories=Office;Viewer;GTK;
+MimeType=application/pdf;
+StartupNotify=true
