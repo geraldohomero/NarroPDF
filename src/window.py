@@ -461,7 +461,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Speed Row (Gtk.Scale suffix)
         speed_row = Adw.ActionRow(title=_("speed"))
-        self.speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -50, 100, 5)
+        self.speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -50, 300, 5)
         self.speed_scale.set_value(0)
         self.speed_scale.set_hexpand(True)
         self.speed_scale.set_size_request(150, -1)
@@ -557,7 +557,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.playback_bar.append(self.spinner)
 
         # Speed slider in bottom playback bar
-        self.bottom_speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -50, 100, 5)
+        self.bottom_speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -50, 300, 5)
         self.bottom_speed_scale.set_valign(Gtk.Align.CENTER)
         self.bottom_speed_scale.set_size_request(120, -1)
         self.bottom_speed_scale.set_value(0)

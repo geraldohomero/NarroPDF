@@ -11,7 +11,7 @@
 ## Funcionalidades Principais
 
 - **Sintetizador de Voz (TTS) Integrado**: Escute seus PDFs em voz alta com sincronização em tempo real, acompanhando a barra de progresso inferior ou o painel lateral direito.
-- **Controle de Velocidade**: Ajuste a velocidade da fala de `0.5x` até `2.0x` diretamente na interface (sincronizada nos sliders).
+- **Controle de Velocidade**: Ajuste a velocidade da fala de `0.5x` até `4.0x` diretamente na interface (sincronizada nos sliders).
 - **Anotações e Marcações**:
   - Realce (**Highlight**) e Sublinhado (**Underline**) de textos selecionados.
   - Seleção de cor customizada com suporte a opacidade via menu dropdown pré-definido (`10%`, `25%`, `50%`, `75%`, `80%`, `90%` e `100%`).
