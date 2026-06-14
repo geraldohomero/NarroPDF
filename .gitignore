@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Flatpak build and output directories
+build-dir/
+.flatpak-builder/
+repo/
+*.flatpak
+
+# OS generated files
+.DS_Store
+Thumbs.db
