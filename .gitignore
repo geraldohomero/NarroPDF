@@ -14,7 +14,7 @@ env/
 build-dir/
 .flatpak-builder/
 repo/
-*.flatpak
+
 
 # OS generated files
 .DS_Store
