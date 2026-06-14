@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 Funcionalidades Principais
+## Funcionalidades Principais
 
 - **Sintetizador de Voz (TTS) Integrado**: Escute seus PDFs em voz alta com sincronização em tempo real, acompanhando a barra de progresso inferior ou o painel lateral direito.
 - **Controle de Velocidade**: Ajuste a velocidade da fala de `0.5x` até `2.0x` diretamente na interface (sincronizada nos sliders).
@@ -27,7 +27,7 @@
 
 ---
 
-## 📦 Instalação e Execução
+## Instalação e Execução
 
 ### Pré-requisitos (Local)
 
@@ -51,7 +51,7 @@ python3 narro-pdf.py
 
 ---
 
-## 🛠️ Empacotamento Flatpak
+## Empacotamento Flatpak
 
 O projeto está totalmente configurado para ser compilado e distribuído via **Flatpak**, seguindo as melhores práticas e diretrizes visuais do ecossistema GNOME (como o ícone de aplicativo em formato de *squircle* minimalista).
 
@@ -88,7 +88,7 @@ flatpak install --user org.geraldohomero.NarroPdf.flatpak
 
 ---
 
-## 🎨 Design do Ícone (Diretrizes Flatpak)
+## Design do Ícone (Diretrizes Flatpak)
 
 O ícone do aplicativo foi atualizado para alinhar-se perfeitamente com a especificação de design do **GNOME/Flatpak App Icons**:
 - Base em formato *squircle* com a cor padrão azul Adwaita.
@@ -97,6 +97,6 @@ O ícone do aplicativo foi atualizado para alinhar-se perfeitamente com a especi
 
 ---
 
-## 📄 Licença
+## Licença
 
 Este projeto está licenciado sob a licença descrita no repositório. Consulte os arquivos de código-fonte para obter mais detalhes.
