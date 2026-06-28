@@ -24,7 +24,7 @@ try:
 except ImportError:
     edge_tts = None
 
-from .constants import DEFAULT_LANGUAGE, LANGUAGE_TO_VOICES
+from .constants import DEFAULT_LANGUAGE, LANGUAGE_TO_VOICES, PIPER_VOICES
 
 log = logging.getLogger(__name__)
 
@@ -88,31 +88,94 @@ class TtsEngine:
         voice: str,
         language: str = DEFAULT_LANGUAGE,
         speed_factor: float = 1.0,
+        engine: str = "edge",
     ) -> None:
-        """Synthesize *text* and begin playback asynchronously."""
-        if not self.is_available:
-            self._emit_status("edge-tts não encontrado. Instale: pip install edge-tts")
-            return
-
+        """Synthesize *text* and begin playback asynchronously using the selected engine."""
         self.stop()
         self._paused = False
         self._emit_state_changed()
-        self._emit_status("Gerando áudio com Edge TTS...")
 
-        if not voice:
-            voices = LANGUAGE_TO_VOICES.get(language, LANGUAGE_TO_VOICES[DEFAULT_LANGUAGE])
-            voice = voices[0]
+        if engine == "edge":
+            if not self.is_available:
+                self._emit_status("edge-tts não encontrado. Instale: pip install edge-tts")
+                return
+            self._emit_status("Gerando áudio com Edge TTS...")
 
-        def worker() -> None:
-            try:
-                fd, output_path = tempfile.mkstemp(prefix="edge_tts_", suffix=".mp3")
-                os.close(fd)
-                asyncio.run(self._synthesize(text, voice, output_path))
-                GLib.idle_add(self._start_playback, output_path, speed_factor)
-            except Exception as exc:
-                GLib.idle_add(self._emit_status, f"Erro no TTS: {exc}")
+            if not voice:
+                voices = LANGUAGE_TO_VOICES.get(language, LANGUAGE_TO_VOICES[DEFAULT_LANGUAGE])
+                voice = voices[0]
 
-        threading.Thread(target=worker, daemon=True).start()
+            def worker() -> None:
+                try:
+                    fd, output_path = tempfile.mkstemp(prefix="edge_tts_", suffix=".mp3")
+                    os.close(fd)
+                    asyncio.run(self._synthesize(text, voice, output_path))
+                    GLib.idle_add(self._start_playback, output_path, speed_factor)
+                except Exception as exc:
+                    GLib.idle_add(self._emit_status, f"Erro no TTS: {exc}")
+
+            threading.Thread(target=worker, daemon=True).start()
+        else: # piper
+            piper_path = shutil.which("piper") or os.path.expanduser("~/.local/bin/piper")
+            if not shutil.which(piper_path):
+                self._emit_status("Comando 'piper' não encontrado. Instale o Piper TTS.")
+                return
+
+            self._emit_status("Iniciando síntese local com Piper TTS...")
+            
+            # Identify model file path
+            voices_dir = os.path.expanduser("~/.local/share/narro-pdf/voices/")
+            model_path = os.path.join(voices_dir, f"{voice}.onnx")
+
+            def piper_worker() -> None:
+                try:
+                    # Download files if they do not exist
+                    if not os.path.exists(model_path) or not os.path.exists(model_path + ".json"):
+                        os.makedirs(voices_dir, exist_ok=True)
+                        from urllib.request import urlretrieve
+                        
+                        # Find download urls
+                        recommended = PIPER_VOICES.get(language)
+                        if recommended and recommended["name"] == voice:
+                            onnx_url = recommended["onnx"]
+                            json_url = recommended["json"]
+                            
+                            GLib.idle_add(self._emit_status, "Baixando modelo do Piper (.onnx)...")
+                            urlretrieve(onnx_url, model_path)
+                            
+                            GLib.idle_add(self._emit_status, "Baixando configuração do Piper (.json)...")
+                            urlretrieve(json_url, model_path + ".json")
+                        else:
+                            raise FileNotFoundError(f"Modelo do Piper {voice}.onnx não encontrado localmente.")
+                    
+                    GLib.idle_add(self._emit_status, "Gerando áudio local com Piper...")
+                    fd, output_path = tempfile.mkstemp(prefix="piper_", suffix=".wav")
+                    os.close(fd)
+                    
+                    # Run piper command
+                    cmd = [
+                        piper_path,
+                        "--model", model_path,
+                        "--output_file", output_path
+                    ]
+                    
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    stdout, stderr = proc.communicate(input=text)
+                    
+                    if proc.returncode != 0:
+                        raise RuntimeError(f"Erro no Piper execution (código {proc.returncode}): {stderr}")
+                    
+                    GLib.idle_add(self._start_playback, output_path, speed_factor)
+                except Exception as exc:
+                    GLib.idle_add(self._emit_status, f"Erro no Piper TTS: {exc}")
+
+            threading.Thread(target=piper_worker, daemon=True).start()
 
     def _send_mpv_command(self, cmd_args: list) -> bool:
         if not os.path.exists(self._mpv_ipc_path):

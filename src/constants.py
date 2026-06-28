@@ -44,8 +44,8 @@ ZOOM_PRESETS: list[float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 # Rendering
 # ---------------------------------------------------------------------------
 
-PAGE_SPACING: int = 24
-WORD_HIT_THRESHOLD_PX: int = 18
+PAGE_SPACING: int = 8
+WORD_HIT_THRESHOLD_PX: int = 60
 
 # ---------------------------------------------------------------------------
 # Languages & Voices
@@ -79,6 +79,24 @@ LANGUAGE_TO_VOICES: dict[str, list[str]] = {
         "es-ES-ElviraNeural",
         "es-ES-AlvaroNeural",
     ],
+}
+
+PIPER_VOICES: dict[str, dict[str, str]] = {
+    "pt-BR": {
+        "name": "pt_BR-faber-medium",
+        "onnx": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx",
+        "json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json"
+    },
+    "en-US": {
+        "name": "en_US-amy-medium",
+        "onnx": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx",
+        "json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json"
+    },
+    "es-ES": {
+        "name": "es_ES-daniele-medium",
+        "onnx": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/daniele/medium/es_ES-daniele-medium.onnx",
+        "json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/daniele/medium/es_ES-daniele-medium.onnx.json"
+    }
 }
 
 DEFAULT_LANGUAGE: str = "pt-BR"

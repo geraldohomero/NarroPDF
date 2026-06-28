@@ -15,7 +15,7 @@
     border: 1px solid alpha(@borders, 0.4);
     border-radius: 4px;
     background-color: white;
-    margin: 24px;
+    margin: 8px 24px;
 }
 
 /* Sidebar */
@@ -50,3 +50,13 @@
 .welcome-open-btn {
     margin-top: 12px;
 }
+
+/* Floating search bar design */
+.search-bar-box {
+    background-color: @popover_bg_color;
+    border: 1px solid @borders;
+    border-radius: 8px;
+    padding: 6px 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+

@@ -93,6 +93,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "discard": "Descartar",
         "tools_and_edit": "Ferramentas & Edição",
         "undo_action": "Desfazer",
+        "search": "Buscar",
+        "no_results": "Nenhum resultado",
+        "engine": "Motor de Voz",
     },
     "en": {
         "app_name": "NarroPDF",
@@ -164,6 +167,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "discard": "Discard",
         "tools_and_edit": "Tools & Editing",
         "undo_action": "Undo",
+        "search": "Search",
+        "no_results": "No results",
+        "engine": "TTS Engine",
     }
 }
 
