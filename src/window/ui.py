@@ -153,6 +153,7 @@ class WindowUiMixin:
         menu.append_submenu(_("language"), lang_menu)
         
         section_app = Gio.Menu()
+        section_app.append(_("settings"), "win.show-settings")
         section_app.append(_("keyboard_shortcuts"), "win.show-shortcuts")
         section_app.append(_("about_app"), "win.show-about")
         menu.append_section(None, section_app)
@@ -426,13 +427,11 @@ class WindowUiMixin:
         tts_group.add(self.engine_row)
 
         self.lang_model = Gtk.StringList()
-        for opt in LANGUAGE_OPTIONS:
-            self.lang_model.append(opt.label)
-            
         self.lang_row = Adw.ComboRow(
             title=_("language"),
             model=self.lang_model,
         )
+        self._refresh_lang_combo_model()
         self.lang_row.connect("notify::selected", self._on_language_row_changed)
         tts_group.add(self.lang_row)
 
@@ -620,6 +619,7 @@ class WindowUiMixin:
             menu.append_submenu(_("language"), lang_menu)
             
             section_app = Gio.Menu()
+            section_app.append(_("settings"), "win.show-settings")
             section_app.append(_("keyboard_shortcuts"), "win.show-shortcuts")
             section_app.append(_("about_app"), "win.show-about")
             menu.append_section(None, section_app)

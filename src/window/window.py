@@ -56,6 +56,13 @@ class MainWindow(
         # State tracking
         self.current_page: int = 0
         self.pdf_path: str | None = None
+        
+        # Settings state
+        from ..settings import load_settings
+        self.settings = load_settings()
+        self.edge_all_voices = []
+        self._load_edge_voices_list()
+        
         self.current_language: str = "pt-BR"
         self.view_mode: ViewMode = ViewMode.CONTINUOUS
         self.tool_mode: ToolMode = ToolMode.SELECTION
@@ -248,3 +255,7 @@ class MainWindow(
             self.has_unsaved_changes = False
             self._update_save_state()
             self.set_status(f"{_('saved_copy')} {fallback}")
+
+    def _on_settings_changed(self) -> None:
+        self._refresh_lang_combo_model()
+        self._update_voices_for_lang_code(self.current_language)

@@ -34,6 +34,7 @@ class WindowActionsMixin:
             ("stop-audio", lambda *_: self.tts.stop()),
             ("show-shortcuts", self._on_show_shortcuts),
             ("show-about", self._on_show_about),
+            ("show-settings", self._on_show_settings),
             ("undo", self._on_undo),
             ("toggle-search", self._on_toggle_search),
             ("set-tool-selection", lambda *_: self.btn_tool_select.set_active(True)),
@@ -160,3 +161,8 @@ class WindowActionsMixin:
             license_type=Gtk.License.MIT_X11
         )
         dialog.present(self)
+
+    def _on_show_settings(self, action: Gio.SimpleAction, param: str) -> None:
+        from .settings_dialog import SettingsDialog
+        dialog = SettingsDialog(self, self._on_settings_changed)
+        dialog.present()

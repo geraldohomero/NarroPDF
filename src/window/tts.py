@@ -1,6 +1,8 @@
 """Text-to-Speech execution, speed control, language options and voice loading for MainWindow."""
 
 import os
+import asyncio
+import threading
 from typing import Any
 
 import gi
@@ -9,13 +11,12 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gio, Gtk
 
 from ..constants import (
-    LANGUAGE_OPTIONS,
     LANGUAGE_TO_VOICES,
     PIPER_VOICES,
-    DEFAULT_LANGUAGE,
 )
 from ..utils import normalize_text_for_tts
 from ..locale import _
+from ..settings import load_settings
 
 
 class WindowTtsMixin:
@@ -51,6 +52,11 @@ class WindowTtsMixin:
         self._run_tts(text)
 
     def _run_tts(self, text: str) -> None:
+        if self.current_engine == "piper" and not self._get_piper_voices(self.current_language):
+            self.spinner.stop()
+            self._show_no_voices_warning()
+            return
+
         self.spinner.start()
         
         selected_idx = self.voice_row.get_selected()
@@ -126,9 +132,11 @@ class WindowTtsMixin:
 
         dropdown_model = Gtk.StringList()
         active_idx = 0
-        for idx, opt in enumerate(LANGUAGE_OPTIONS):
-            dropdown_model.append(opt.label)
-            if opt.code == suggested:
+        active_langs = self.settings.get("active_languages", ["pt-BR", "en-US", "es-ES"])
+        labels = self.settings.get("language_labels", {})
+        for idx, code in enumerate(active_langs):
+            dropdown_model.append(labels.get(code, code))
+            if code == suggested:
                 active_idx = idx
 
         dropdown = Gtk.DropDown(model=dropdown_model)
@@ -150,8 +158,9 @@ class WindowTtsMixin:
 
         def on_confirm(_btn: Gtk.Button) -> None:
             sel_idx = dropdown.get_selected()
-            if sel_idx != Gtk.INVALID_LIST_POSITION:
-                chosen = LANGUAGE_OPTIONS[sel_idx].code
+            active_langs = self.settings.get("active_languages", ["pt-BR", "en-US", "es-ES"])
+            if sel_idx != Gtk.INVALID_LIST_POSITION and sel_idx < len(active_langs):
+                chosen = active_langs[sel_idx]
                 self.current_language = chosen
                 self.lang_row.set_selected(sel_idx)
                 self._update_voices_for_lang_code(chosen)
@@ -162,16 +171,19 @@ class WindowTtsMixin:
 
     def _on_language_row_changed(self, row: Adw.ComboRow, pspec: Any) -> None:
         idx = row.get_selected()
-        if idx != Gtk.INVALID_LIST_POSITION:
-            code = LANGUAGE_OPTIONS[idx].code
+        active_langs = self.settings.get("active_languages", ["pt-BR", "en-US", "es-ES"])
+        if idx != Gtk.INVALID_LIST_POSITION and idx < len(active_langs):
+            code = active_langs[idx]
             self.current_language = code
             self._update_voices_for_lang_code(code)
 
     def _update_voices_for_lang_code(self, code: str) -> None:
+        if not hasattr(self, "voice_model") or not hasattr(self, "voice_row"):
+            return
         self.voice_model.splice(0, self.voice_model.get_n_items(), [])
         
         if self.current_engine == "edge":
-            voices = LANGUAGE_TO_VOICES.get(code, LANGUAGE_TO_VOICES["pt-BR"])
+            voices = self._get_edge_voices_for_lang(code)
         else:
             voices = self._get_piper_voices(code)
             
@@ -182,19 +194,14 @@ class WindowTtsMixin:
             self.voice_row.set_selected(0)
 
     def _get_piper_voices(self, code: str) -> list[str]:
-        piper_lang = code.replace("-", "_")
+        piper_lang = code.replace("-", "_").lower()
         voices = []
         
-        # 1. Add recommended voice first
-        recommended = PIPER_VOICES.get(code)
-        if recommended:
-            voices.append(recommended["name"])
-            
-        # 2. Scan voices directory for other voices matching the language
+        # Scan voices directory for other voices matching the language
         voices_dir = os.path.expanduser("~/.local/share/narro-pdf/voices/")
         if os.path.exists(voices_dir):
             for name in os.listdir(voices_dir):
-                if name.endswith(".onnx") and name.startswith(piper_lang):
+                if name.endswith(".onnx") and name.lower().startswith(piper_lang):
                     v_name = name[:-5] # remove .onnx
                     if v_name not in voices:
                         voices.append(v_name)
@@ -206,3 +213,78 @@ class WindowTtsMixin:
         if idx != Gtk.INVALID_LIST_POSITION:
             self.current_engine = "edge" if idx == 0 else "piper"
             self._update_voices_for_lang_code(self.current_language)
+
+    def _refresh_lang_combo_model(self) -> None:
+        if not hasattr(self, "lang_row") or not hasattr(self, "lang_model"):
+            return
+        self.settings = load_settings()
+
+        self.lang_model.splice(0, self.lang_model.get_n_items(), [])
+        active_langs = self.settings.get("active_languages", ["pt-BR", "en-US", "es-ES"])
+        labels = self.settings.get("language_labels", {})
+        
+        for code in active_langs:
+            label = labels.get(code, code)
+            self.lang_model.append(label)
+            
+        if self.current_language in active_langs:
+            self.lang_row.set_selected(active_langs.index(self.current_language))
+        elif active_langs:
+            self.current_language = active_langs[0]
+            self.lang_row.set_selected(0)
+
+    def _get_edge_voices_for_lang(self, code: str) -> list[str]:
+        visible_set = self.settings.get("edge_voices_visibility", {})
+        voices = []
+        if getattr(self, "edge_all_voices", None):
+            normalized = code.replace("-", "_").lower()
+            for v in self.edge_all_voices:
+                locale = v.get("Locale", "").replace("-", "_").lower()
+                if locale == normalized or locale.startswith(normalized + "_") or locale.replace("_", "-") == normalized:
+                    name = v.get("ShortName", "")
+                    if name and visible_set.get(name, True):
+                        voices.append(name)
+        if not voices:
+            default_voices = LANGUAGE_TO_VOICES.get(code, [])
+            for name in default_voices:
+                if name and visible_set.get(name, True):
+                    voices.append(name)
+        return voices
+
+    def _load_edge_voices_list(self) -> None:
+        import edge_tts
+        
+        def run_load():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                voices = loop.run_until_complete(edge_tts.list_voices())
+                loop.close()
+                GLib.idle_add(self._on_edge_voices_loaded, voices)
+            except Exception as exc:
+                print(f"Error loading Edge TTS voices list: {exc}")
+                
+        threading.Thread(target=run_load, daemon=True).start()
+
+    def _on_edge_voices_loaded(self, voices: list) -> None:
+        self.edge_all_voices = voices
+        if hasattr(self, "voice_model"):
+            self._update_voices_for_lang_code(self.current_language)
+
+    def _show_no_voices_warning(self) -> None:
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading=_("settings"),
+            body=_("no_downloaded_voices")
+        )
+        dialog.add_response("cancel", _("cancel"))
+        dialog.add_response("settings", _("settings"))
+        dialog.set_response_appearance("settings", Adw.ResponseAppearance.SUGGESTED)
+        
+        def on_response(d: Adw.MessageDialog, response_id: str) -> None:
+            if response_id == "settings":
+                self._on_show_settings(None, "")
+            d.close()
+            
+        dialog.connect("response", on_response)
+        dialog.present()

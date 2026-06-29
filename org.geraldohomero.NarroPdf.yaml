@@ -67,6 +67,27 @@ modules:
 
   - python3-modules.json
 
+  - name: piper
+    buildsystem: simple
+    build-commands:
+      - install -d /app/bin
+      - install -d /app/lib
+      - cp piper /app/bin/piper
+      - cp lib*.so* /app/lib/
+      - cp libtashkeel_model.ort /app/lib/
+      - cp -r espeak-ng-data /app/bin/
+    sources:
+      - type: archive
+        url: https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_amd64.tar.gz
+        sha256: 467c17935d2a22dcce9dc9e08ba07485e29be813097e7cf08c5627aa09d32e42
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_arm64.tar.gz
+        sha256: 34b298f6b3e55b55e81f05c6157310f9ec4df3fdd3d73e4c85eb80e218c54d2c
+        only-arches:
+          - aarch64
+
   - name: narro-pdf
     buildsystem: simple
     build-commands:
