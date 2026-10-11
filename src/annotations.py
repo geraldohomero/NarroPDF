@@ -44,24 +44,21 @@ class AnnotationManager:
         if not line_rects:
             raise ValueError("No selection rects provided for annotation.")
 
-        xrefs = []
+        quads = [rect.quad for rect in line_rects]
+
         if annotation_type == AnnotationType.HIGHLIGHT:
-            for rect in line_rects:
-                annot = page.add_highlight_annot(rect)
-                annot.set_colors(stroke=color)
-                annot.set_opacity(opacity)
-                annot.update()
-                xrefs.append(annot.xref)
-            return "Highlight", xrefs
+            annot = page.add_highlight_annot(quads)
+            annot.set_colors(stroke=color)
+            annot.set_opacity(opacity)
+            annot.update()
+            return "Highlight", [annot.xref]
 
         elif annotation_type == AnnotationType.UNDERLINE:
-            for rect in line_rects:
-                annot = page.add_underline_annot(rect)
-                annot.set_colors(stroke=color)
-                annot.set_opacity(opacity)
-                annot.update()
-                xrefs.append(annot.xref)
-            return "Underline", xrefs
+            annot = page.add_underline_annot(quads)
+            annot.set_colors(stroke=color)
+            annot.set_opacity(opacity)
+            annot.update()
+            return "Underline", [annot.xref]
 
         elif annotation_type == AnnotationType.NOTE:
             annot = page.add_text_annot(
@@ -70,8 +67,101 @@ class AnnotationManager:
             annot.set_colors(stroke=color)
             annot.set_opacity(opacity)
             annot.update()
-            xrefs.append(annot.xref)
-            return "Nota", xrefs
+            return "Nota", [annot.xref]
 
         else:
             raise ValueError(f"Unknown annotation type: {annotation_type}")
+
+    @staticmethod
+    def find_at_point(
+        page: fitz.Page, point: fitz.Point | tuple[float, float]
+    ) -> fitz.Annot | None:
+        """Find a highlight or underline annotation intersecting point (px, py).
+
+        Args:
+            page: PyMuPDF page to inspect.
+            point: (x, y) coordinates in PDF points.
+
+        Returns:
+            fitz.Annot if hit, else None.
+        """
+        import fitz
+
+        pt = fitz.Point(*point) if not isinstance(point, fitz.Point) else point
+
+        annot = page.first_annot
+        while annot:
+            # fitz.PDF_ANNOT_HIGHLIGHT = 8, fitz.PDF_ANNOT_UNDERLINE = 9
+            if annot.type[0] in (fitz.PDF_ANNOT_HIGHLIGHT, fitz.PDF_ANNOT_UNDERLINE):
+                if pt in annot.rect:
+                    vertices = annot.vertices
+                    if vertices and len(vertices) >= 4:
+                        for i in range(0, len(vertices), 4):
+                            quad_pts = vertices[i : i + 4]
+                            if len(quad_pts) == 4:
+                                min_x = min(p[0] for p in quad_pts)
+                                max_x = max(p[0] for p in quad_pts)
+                                min_y = min(p[1] for p in quad_pts)
+                                max_y = max(p[1] for p in quad_pts)
+                                if (min_x - 3) <= pt.x <= (max_x + 3) and (min_y - 3) <= pt.y <= (max_y + 3):
+                                    return annot
+                    else:
+                        return annot
+            annot = annot.next
+
+        return None
+
+    @staticmethod
+    def update_geometry(
+        page: fitz.Page, annot: fitz.Annot, new_line_rects: list[fitz.Rect]
+    ) -> fitz.Annot:
+        """Replace an existing annotation's geometry with new line rects.
+
+        Args:
+            page: PyMuPDF page containing the annotation.
+            annot: Existing annotation to replace.
+            new_line_rects: New bounding rects.
+
+        Returns:
+            The newly created fitz.Annot with updated geometry.
+        """
+        if not new_line_rects:
+            raise ValueError("No selection rects provided for updating geometry.")
+
+        import fitz
+
+        annot_type = annot.type[0]
+        colors = annot.colors or {}
+        stroke = colors.get("stroke", (1.0, 1.0, 0.0))
+        opacity = annot.opacity if annot.opacity >= 0 else 1.0
+
+        page.delete_annot(annot)
+
+        quads = [r.quad for r in new_line_rects]
+        if annot_type == fitz.PDF_ANNOT_UNDERLINE:
+            new_annot = page.add_underline_annot(quads)
+        else:
+            new_annot = page.add_highlight_annot(quads)
+
+        new_annot.set_colors(stroke=stroke)
+        new_annot.set_opacity(opacity)
+        new_annot.update()
+        return new_annot
+
+    @staticmethod
+    def delete_annot(page: fitz.Page, annot: fitz.Annot) -> bool:
+        """Delete an annotation safely from the page.
+
+        Args:
+            page: PyMuPDF page.
+            annot: Annotation to remove.
+
+        Returns:
+            True if deleted successfully, False otherwise.
+        """
+        try:
+            page.delete_annot(annot)
+            return True
+        except Exception as exc:
+            log.error("Failed to delete annotation: %s", exc)
+            return False
