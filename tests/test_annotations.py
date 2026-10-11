@@ -20,6 +20,18 @@ class TestAnnotationManager(unittest.TestCase):
         self.assertEqual(len(annots), 1)
         self.assertEqual(len(annots[0].vertices), 8)
 
+    def test_three_lines_single_annotation(self):
+        r1 = fitz.Rect(50, 50, 200, 65)
+        r2 = fitz.Rect(50, 70, 250, 85)
+        r3 = fitz.Rect(50, 90, 220, 105)
+        label, xrefs = AnnotationManager.apply(
+            self.page, AnnotationType.HIGHLIGHT, [r1, r2, r3], (1.0, 1.0, 0.0), 0.8
+        )
+        self.assertEqual(len(xrefs), 1)
+        annots = list(self.page.annots())
+        self.assertEqual(len(annots), 1)
+        self.assertEqual(len(annots[0].vertices), 12)
+
     def test_unified_multi_line_underline(self):
         r1 = fitz.Rect(50, 50, 200, 65)
         r2 = fitz.Rect(50, 70, 250, 85)

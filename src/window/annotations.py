@@ -108,6 +108,7 @@ class WindowAnnotationsMixin:
                 self.pop_color_btn.set_rgba(self.current_color)
             else:
                 self.btn_color.set_rgba(self.current_color)
+            self._update_selected_annotation_appearance()
         finally:
             self._updating_opacity = False
 
@@ -136,8 +137,44 @@ class WindowAnnotationsMixin:
 
             self.btn_color.set_rgba(self.current_color)
             self.pop_color_btn.set_rgba(self.current_color)
+            self._update_selected_annotation_appearance()
         finally:
             self._updating_opacity = False
+
+    def _update_selected_annotation_appearance(self) -> None:
+        sel_annot = getattr(self, "selected_annotation", None)
+        if sel_annot and self.renderer.doc:
+            try:
+                page = self.renderer.doc.load_page(sel_annot["page_idx"])
+                annot = sel_annot["annot"]
+                rgb = (self.current_color.red, self.current_color.green, self.current_color.blue)
+                annot.set_colors(stroke=rgb)
+                annot.set_opacity(self.current_color.alpha)
+                annot.update()
+                self.has_unsaved_changes = True
+                self._update_save_state()
+                self._render_view()
+            except Exception as exc:
+                log.error("Failed to update annotation appearance: %s", exc)
+
+    def _on_delete_selected_annotation(self) -> None:
+        sel_annot = getattr(self, "selected_annotation", None)
+        if not sel_annot or not self.renderer.doc:
+            return
+
+        try:
+            page = self.renderer.doc.load_page(sel_annot["page_idx"])
+            annot = sel_annot["annot"]
+            AnnotationManager.delete_annot(page, annot)
+            self.selected_annotation = None
+            self.selection.clear_selection()
+            self.has_unsaved_changes = True
+            self._update_save_state()
+            self.popover.popdown()
+            self._render_view()
+            self.set_status(_("delete_annotation") + " realizada.")
+        except Exception as exc:
+            log.error("Failed to delete selected annotation: %s", exc)
 
     def _update_save_state(self) -> None:
         if self.has_unsaved_changes:
@@ -329,6 +366,27 @@ class WindowAnnotationsMixin:
         selected = self.selection.get_selected_words()
         if not selected:
             return
+
+        is_annot = getattr(self, "selected_annotation", None) is not None
+        if hasattr(self, "btn_delete_annot"):
+            self.btn_delete_annot.set_visible(is_annot)
+
+        if is_annot:
+            annot = self.selected_annotation.get("annot")
+            if annot:
+                colors = annot.colors or {}
+                stroke = colors.get("stroke")
+                if stroke and len(stroke) >= 3:
+                    c = Gdk.RGBA()
+                    c.red = stroke[0]
+                    c.green = stroke[1]
+                    c.blue = stroke[2]
+                    c.alpha = annot.opacity if annot.opacity >= 0 else 1.0
+                    self.current_color = c
+                    if hasattr(self, "btn_color"):
+                        self.btn_color.set_rgba(c)
+                    if hasattr(self, "pop_color_btn"):
+                        self.pop_color_btn.set_rgba(c)
 
         last_word = selected[-1]
         rect = last_word["rect"]

@@ -401,6 +401,12 @@ class WindowUiMixin:
         self.pop_opacity_dropdown.connect("notify::selected", self._on_opacity_dropdown_changed)
         pop_box.append(self.pop_opacity_dropdown)
 
+        self.btn_delete_annot = Gtk.Button(tooltip_text=_("delete_annotation"))
+        self.btn_delete_annot.set_icon_name("user-trash-symbolic")
+        self.btn_delete_annot.add_css_class("destructive-action")
+        self.btn_delete_annot.connect("clicked", lambda _: self._on_delete_selected_annotation())
+        pop_box.append(self.btn_delete_annot)
+
         self.popover.set_child(pop_box)
 
         # 5. Right Sidebar (TTS Configs)
