@@ -15,6 +15,9 @@ build-dir/
 .flatpak-builder/
 repo/
 
+# Documentation and superpower artifacts
+docs/
+.superpowers/
 
 # OS generated files
 .DS_Store
