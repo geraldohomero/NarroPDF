@@ -137,3 +137,4 @@ Atualmente no NarroPDF:
 
 ## 4. Conclusão
 O design acima atende a todos os requisitos com arquitetura limpa, desacoplada e compatível com as versões existentes de visualização em página única e contínua do NarroPDF.
+
