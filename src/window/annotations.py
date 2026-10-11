@@ -1,6 +1,7 @@
 """Annotations management, selection drawing and popover placement for MainWindow."""
 
 import logging
+import math
 from typing import Any
 
 import gi
@@ -200,14 +201,59 @@ class WindowAnnotationsMixin:
 
     def _draw_selection_overlay(self, area: Gtk.DrawingArea, cr: Any, w: int, h: int) -> None:
         self._render_highlights_on_cr(cr)
+        self._render_annotation_handles_on_cr(cr, self.current_page)
         self._render_tts_highlights_on_cr(cr, self.current_page)
         self._render_search_highlights_on_cr(cr, self.current_page)
 
     def _draw_page_selection_overlay(self, area: Gtk.DrawingArea, cr: Any, w: int, h: int, page_idx: int) -> None:
         if self.current_page == page_idx:
             self._render_highlights_on_cr(cr)
+            self._render_annotation_handles_on_cr(cr, page_idx)
         self._render_tts_highlights_on_cr(cr, page_idx)
         self._render_search_highlights_on_cr(cr, page_idx)
+
+    def _hit_test_handle(self, screen_x: float, screen_y: float) -> str | None:
+        """Check if screen coordinate hits start or end handle."""
+        handles = self.selection.get_handle_positions(self.renderer.zoom)
+        if not handles:
+            return None
+        start_pt, end_pt = handles
+        threshold_sq = 14.0 * 14.0  # 196 px^2
+
+        dx_start = screen_x - start_pt[0]
+        dy_start = screen_y - start_pt[1]
+        if (dx_start * dx_start + dy_start * dy_start) <= threshold_sq:
+            return "start"
+
+        dx_end = screen_x - end_pt[0]
+        dy_end = screen_y - end_pt[1]
+        if (dx_end * dx_end + dy_end * dy_end) <= threshold_sq:
+            return "end"
+
+        return None
+
+    def _render_annotation_handles_on_cr(self, cr: Any, page_idx: int) -> None:
+        """Render circular drag handles at start and end of selection."""
+        sel_annot = getattr(self, "selected_annotation", None)
+        if not sel_annot or sel_annot.get("page_idx") != page_idx:
+            return
+
+        handles = self.selection.get_handle_positions(self.renderer.zoom)
+        if not handles:
+            return
+        start_pt, end_pt = handles
+
+        for pt in (start_pt, end_pt):
+            # Outer white border ring for high contrast
+            cr.set_source_rgba(1.0, 1.0, 1.0, 1.0)
+            cr.set_line_width(2.0)
+            cr.arc(pt[0], pt[1], 7.0, 0.0, 2.0 * math.pi)
+            cr.stroke()
+
+            # Inner accent blue circle
+            cr.set_source_rgba(0.208, 0.518, 0.894, 1.0)
+            cr.arc(pt[0], pt[1], 6.0, 0.0, 2.0 * math.pi)
+            cr.fill()
 
     def _render_tts_highlights_on_cr(self, cr: Any, page_idx: int) -> None:
         sentence = getattr(self, "active_tts_sentence", None)
