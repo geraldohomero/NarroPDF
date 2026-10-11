@@ -98,6 +98,29 @@ class TextSelectionHandler:
             return None
         return lo, hi
 
+    def set_selection_bounds(self, lo: int, hi: int) -> None:
+        """Explicitly set selection range to [lo, hi]."""
+        if not self.page_words:
+            self.clear_selection()
+            return
+        lo = max(0, min(lo, len(self.page_words) - 1))
+        hi = max(0, min(hi, len(self.page_words) - 1))
+        self.selection_range = (lo, hi)
+
+    def get_handle_positions(
+        self, zoom: float
+    ) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """Return screen coordinates of (start_handle, end_handle) for current selection."""
+        bounds = self.get_selected_bounds()
+        if not bounds or not self.page_words:
+            return None
+        lo, hi = bounds
+        start_rect = self.page_words[lo]["rect"]
+        end_rect = self.page_words[hi]["rect"]
+        start_pt = (start_rect.x0 * zoom, start_rect.y0 * zoom)
+        end_pt = (end_rect.x1 * zoom, end_rect.y1 * zoom)
+        return start_pt, end_pt
+
     def get_selected_words(self) -> list[dict]:
         """Return the list of selected word dicts."""
         bounds = self.get_selected_bounds()
@@ -222,3 +245,46 @@ class TextSelectionHandler:
         ]
         words.sort(key=lambda item: (item["block"], item["line"], item["word"]))
         return words
+
+    def find_word_range_for_vertices(
+        self, vertices: list
+    ) -> tuple[int, int] | None:
+        """Find the (lo, hi) word indices in page_words covered by annotation vertices."""
+        if not self.page_words or not vertices:
+            return None
+
+        import fitz
+
+        # Reconstruct quad rectangles from vertices
+        quad_rects: list[fitz.Rect] = []
+        for i in range(0, len(vertices), 4):
+            pts = vertices[i : i + 4]
+            if len(pts) == 4:
+                min_x = min(p[0] for p in pts)
+                max_x = max(p[0] for p in pts)
+                min_y = min(p[1] for p in pts)
+                max_y = max(p[1] for p in pts)
+                quad_rects.append(fitz.Rect(min_x, min_y, max_x, max_y))
+
+        if not quad_rects:
+            return None
+
+        matching_indices = []
+        for idx, item in enumerate(self.page_words):
+            w_rect = item["rect"]
+            for q_rect in quad_rects:
+                intersection = w_rect & q_rect
+                if not intersection.is_empty and intersection.width > 1 and intersection.height > 1:
+                    matching_indices.append(idx)
+                    break
+                # Fallback to center point proximity
+                mid_x = (w_rect.x0 + w_rect.x1) / 2
+                mid_y = (w_rect.y0 + w_rect.y1) / 2
+                if q_rect.x0 - 2 <= mid_x <= q_rect.x1 + 2 and q_rect.y0 - 2 <= mid_y <= q_rect.y1 + 2:
+                    matching_indices.append(idx)
+                    break
+
+        if not matching_indices:
+            return None
+
+        return min(matching_indices), max(matching_indices)
