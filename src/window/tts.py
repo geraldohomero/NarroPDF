@@ -25,50 +25,79 @@ class WindowTtsMixin:
     def _on_read_page(self, action: Gio.SimpleAction = None, val: Any = None) -> None:
         if not self.renderer.doc:
             return
-        page = self.renderer.doc.load_page(self.current_page)
-        raw_text = page.get_text("text") or ""
-        text = normalize_text_for_tts(raw_text.strip())
-        if not text:
-            self.set_status(_("no_extractable_text"))
-            return
-
-        self._run_tts(text)
+        self.start_playback_from_sentence(self.current_page, 0)
 
     def _on_read_selection(self, action: Gio.SimpleAction = None, val: Any = None) -> None:
-        text = ""
-        bounds = self.text_buffer.get_selection_bounds()
-        if bounds:
-            start_iter, end_iter = bounds
-            text = self.text_buffer.get_text(start_iter, end_iter, True).strip()
-            
-        if not text:
-            text = self.selection.get_selected_text().strip()
-
-        text = normalize_text_for_tts(text)
-        if not text:
-            self.set_status(_("select_text_prompt"))
+        if not self.renderer.doc:
             return
 
-        self._run_tts(text)
+        selected_words = self.selection.get_selected_words()
+        if selected_words:
+            first_word = selected_words[0]
+            sentences = self.tts.get_sentences_for_page(self.current_page)
+            for s_idx, sent in enumerate(sentences):
+                for w in sent.words:
+                    if w.text == first_word["text"] and abs(w.rect.x0 - first_word["rect"].x0) < 2.0:
+                        self.start_playback_from_sentence(self.current_page, s_idx)
+                        return
 
-    def _run_tts(self, text: str) -> None:
+        self._on_read_page()
+
+    def start_playback_from_sentence(self, page_idx: int, sentence_idx: int) -> None:
         if self.current_engine == "piper" and not self._get_piper_voices(self.current_language):
-            self.spinner.stop()
+            if hasattr(self, "spinner"):
+                self.spinner.stop()
             self._show_no_voices_warning()
             return
 
-        self.spinner.start()
-        
-        selected_idx = self.voice_row.get_selected()
-        voice = ""
-        if selected_idx != Gtk.INVALID_LIST_POSITION:
-            voice = self.voice_model.get_string(selected_idx)
-            
-        rate_val = int(self.speed_scale.get_value())
-        speed_factor = 1.0 + (rate_val / 100.0)
+        if hasattr(self, "spinner"):
+            self.spinner.start()
 
-        # Pass current_engine to the TTS reading process
-        self.tts.read_aloud(text, voice, self.current_language, speed_factor, self.current_engine)
+        voice = ""
+        if hasattr(self, "voice_row") and hasattr(self, "voice_model"):
+            selected_idx = self.voice_row.get_selected()
+            if selected_idx != Gtk.INVALID_LIST_POSITION:
+                voice = self.voice_model.get_string(selected_idx)
+
+        speed_factor = 1.0
+        if hasattr(self, "speed_scale"):
+            rate_val = int(self.speed_scale.get_value())
+            speed_factor = 1.0 + (rate_val / 100.0)
+
+        self.tts.start_playback(
+            page_idx, sentence_idx, voice, self.current_language, speed_factor, self.current_engine
+        )
+
+    def _on_pdf_double_clicked(self, page_idx: int, x: float, y: float) -> None:
+        """Start or jump playback when user double-clicks on text in the PDF."""
+        if not self.renderer.doc:
+            return
+
+        sentences = self.tts.get_sentences_for_page(page_idx)
+        if not sentences:
+            return
+
+        zoom = getattr(self.renderer, "zoom", 1.0)
+        px = x / zoom
+        py = y / zoom
+
+        from ..tts_segmenter import TtsSegmenter
+        match = TtsSegmenter.find_sentence_at_point(sentences, px, py)
+        if match:
+            sent, _ = match
+            self.start_playback_from_sentence(page_idx, sent.sentence_index)
+
+    def _on_next_sentence(self, action: Gio.SimpleAction = None, val: Any = None) -> None:
+        self.tts.next_sentence()
+
+    def _on_prev_sentence(self, action: Gio.SimpleAction = None, val: Any = None) -> None:
+        self.tts.prev_sentence()
+
+    def _on_next_paragraph(self, action: Gio.SimpleAction = None, val: Any = None) -> None:
+        self.tts.next_paragraph()
+
+    def _on_prev_paragraph(self, action: Gio.SimpleAction = None, val: Any = None) -> None:
+        self.tts.prev_paragraph()
 
     def _format_speed_value(self, scale: Gtk.Scale, val: float) -> str:
         speed_factor = 1.0 + (val / 100.0)

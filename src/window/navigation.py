@@ -51,6 +51,7 @@ class WindowNavigationMixin:
             self.current_page = 0
             self.selection.clear_selection()
             self.renderer.set_document(doc)
+            self.tts.set_document(doc)
             self.has_unsaved_changes = False
             self.annotation_history.clear()
             self._update_save_state()
@@ -213,6 +214,9 @@ class WindowNavigationMixin:
     def _on_single_click_pressed(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float) -> None:
         if self.tool_mode != ToolMode.HAND:
             if n_press == 2:
+                if getattr(self.tts, "is_playing", False):
+                    self._on_pdf_double_clicked(self.current_page, x, y)
+                    return
                 # Double click: select single word
                 hit = self.selection.begin_drag(x, y, self.renderer.zoom)
                 if hit:
@@ -253,6 +257,9 @@ class WindowNavigationMixin:
     def _on_continuous_click_pressed(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float, page_idx: int) -> None:
         if self.tool_mode != ToolMode.HAND:
             if n_press == 2:
+                if getattr(self.tts, "is_playing", False):
+                    self._on_pdf_double_clicked(page_idx, x, y)
+                    return
                 # Sync active page states without scrolling viewport
                 self.current_page = page_idx
                 self._update_controls_sensitivity()
@@ -452,3 +459,39 @@ class WindowNavigationMixin:
         if self.view_mode == ViewMode.CONTINUOUS and self.renderer.page_widgets:
             for page_data in self.renderer.page_widgets:
                 page_data["drawing_area"].set_cursor(cursor)
+
+    def _scroll_to_tts_sentence(self, sentence: Any) -> None:
+        """Ensure the active TTS sentence is scrolled into view smoothly."""
+        if not sentence or not sentence.line_rects:
+            return
+
+        from ..constants import ViewMode, PAGE_SPACING
+
+        if self.view_mode == ViewMode.CONTINUOUS:
+            vadj = self.scroller.get_vadjustment()
+            if not vadj:
+                return
+
+            # Compute page vertical position in continuous mode
+            top_y_in_page = min(r.y0 for r in sentence.line_rects)
+            h_with_spacing = self.renderer.page_h + PAGE_SPACING
+            target_page_top = sentence.page_index * h_with_spacing
+            sentence_global_y = target_page_top + (top_y_in_page * self.renderer.zoom)
+
+            curr_scroll = vadj.get_value()
+            page_size = vadj.get_page_size()
+            viewport_bottom = curr_scroll + page_size
+
+            # If the sentence is out of bounds or in the lower 20% of the screen, scroll to it
+            if sentence_global_y < curr_scroll + 40 or sentence_global_y > (viewport_bottom - 100):
+                target_scroll = max(0.0, min(
+                    sentence_global_y - (page_size * 0.25),
+                    vadj.get_upper() - page_size
+                ))
+                self._is_navigating = True
+                vadj.set_value(target_scroll)
+                self._is_navigating = False
+        else:
+            if self.current_page != sentence.page_index:
+                self._navigate_to_page_index(sentence.page_index)
+

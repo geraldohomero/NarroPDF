@@ -512,10 +512,30 @@ class WindowUiMixin:
         controls_box.add_css_class("linked")
         controls_box.set_valign(Gtk.Align.CENTER)
 
+        self.btn_prev_para = Gtk.Button(tooltip_text=_("prev_paragraph"))
+        self.btn_prev_para.set_icon_name("media-skip-backward-symbolic")
+        self.btn_prev_para.set_action_name("win.prev-paragraph")
+        controls_box.append(self.btn_prev_para)
+
+        self.btn_prev_sent = Gtk.Button(tooltip_text=_("prev_sentence"))
+        self.btn_prev_sent.set_icon_name("media-seek-backward-symbolic")
+        self.btn_prev_sent.set_action_name("win.prev-sentence")
+        controls_box.append(self.btn_prev_sent)
+
         self.btn_play_pause = Gtk.Button()
         self.btn_play_pause.set_icon_name("media-playback-pause-symbolic")
         self.btn_play_pause.set_action_name("win.play-pause")
         controls_box.append(self.btn_play_pause)
+
+        self.btn_next_sent = Gtk.Button(tooltip_text=_("next_sentence"))
+        self.btn_next_sent.set_icon_name("media-seek-forward-symbolic")
+        self.btn_next_sent.set_action_name("win.next-sentence")
+        controls_box.append(self.btn_next_sent)
+
+        self.btn_next_para = Gtk.Button(tooltip_text=_("next_paragraph"))
+        self.btn_next_para.set_icon_name("media-skip-forward-symbolic")
+        self.btn_next_para.set_action_name("win.next-paragraph")
+        controls_box.append(self.btn_next_para)
 
         btn_stop = Gtk.Button(tooltip_text=_("stop_reading"))
         btn_stop.set_icon_name("media-playback-stop-symbolic")
@@ -580,6 +600,15 @@ class WindowUiMixin:
         if hasattr(self, 'btn_zoom_in'):
             self.btn_zoom_in.set_tooltip_text(_("zoom_in"))
             
+        if hasattr(self, 'btn_prev_para'):
+            self.btn_prev_para.set_tooltip_text(_("prev_paragraph"))
+        if hasattr(self, 'btn_prev_sent'):
+            self.btn_prev_sent.set_tooltip_text(_("prev_sentence"))
+        if hasattr(self, 'btn_next_sent'):
+            self.btn_next_sent.set_tooltip_text(_("next_sentence"))
+        if hasattr(self, 'btn_next_para'):
+            self.btn_next_para.set_tooltip_text(_("next_paragraph"))
+
         if hasattr(self, 'view_stack'):
             pages_child = self.view_stack.get_child_by_name("pages")
             if pages_child:
