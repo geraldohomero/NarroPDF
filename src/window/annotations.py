@@ -216,8 +216,8 @@ class WindowAnnotationsMixin:
 
         zoom = self.renderer.zoom
 
-        # 1. Destaque suave da Frase Inteira
-        cr.set_source_rgba(1.0, 0.90, 0.30, 0.28)
+        # 1. Destaque suave da Frase Inteira (Cinza claro)
+        cr.set_source_rgba(0.82, 0.82, 0.85, 0.45)
         for r in sentence.line_rects:
             x = r.x0 * zoom
             y = r.y0 * zoom
@@ -226,7 +226,7 @@ class WindowAnnotationsMixin:
             cr.rectangle(x, y, w, h)
             cr.fill()
 
-        # 2. Destaque da Palavra Ativa
+        # 2. Destaque da Palavra Ativa (Cinza levemente mais escuro)
         word_idx = getattr(self, "active_tts_word_index", -1)
         if 0 <= word_idx < len(sentence.words):
             word = sentence.words[word_idx]
@@ -236,13 +236,13 @@ class WindowAnnotationsMixin:
             ww = (wr.x1 - wr.x0) * zoom
             wh = (wr.y1 - wr.y0) * zoom
 
-            # Fundo âmbar vibrante
-            cr.set_source_rgba(0.984, 0.549, 0.0, 0.85)
+            # Fundo cinza mais escuro
+            cr.set_source_rgba(0.55, 0.55, 0.58, 0.65)
             cr.rectangle(wx, wy, ww, wh)
             cr.fill()
 
-            # Borda sutil de ênfase
-            cr.set_source_rgba(0.90, 0.40, 0.0, 0.95)
+            # Borda sutil de definição
+            cr.set_source_rgba(0.38, 0.38, 0.40, 0.85)
             cr.set_line_width(1.0)
             cr.rectangle(wx, wy, ww, wh)
             cr.stroke()

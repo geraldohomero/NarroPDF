@@ -153,6 +153,8 @@ class TtsCoordinator:
             tempfile.gettempdir(), f"narro_tts_coord_mpv_{os.getpid()}.sock"
         )
         self._clock_timer_id: int | None = None
+        self._playing_file: bool = False
+        self._file_started: bool = False
 
         # Callbacks
         self.on_highlight_update: Callable[[int, int, int], None] | None = None
@@ -265,7 +267,10 @@ class TtsCoordinator:
         self._stop_requested = True
         self._playback_token += 1
 
+        self._playing_file = False
+        self._file_started = False
         self._stop_clock_timer()
+        self._send_mpv_command(["stop"])
         self._terminate_mpv()
 
         with self._prebuffer_lock:
@@ -291,19 +296,36 @@ class TtsCoordinator:
         self._send_mpv_command(["set_property", "speed", speed_factor])
 
     def next_sentence(self) -> None:
-        """Advance to the next sentence."""
+        """Advance to the next sentence seamlessly."""
+        if self.is_playing:
+            self._advance_to_next_sentence(self._playback_token)
+        else:
+            sentences = self.get_sentences_for_page(self.current_page)
+            if self.current_sentence_idx + 1 < len(sentences):
+                self.start_playback(
+                    self.current_page,
+                    self.current_sentence_idx + 1,
+                    self.voice,
+                    self.language,
+                    self.speed_factor,
+                    self.engine,
+                )
+            elif self.doc and self.current_page + 1 < len(self.doc):
+                self._advance_to_page(self.current_page + 1, 0)
+
+    def _advance_to_next_sentence(self, token: int) -> None:
+        """Advance to next sentence seamlessly without stopping mpv or clearing prebuffer."""
+        if token != self._playback_token or self._stop_requested:
+            return
+
         sentences = self.get_sentences_for_page(self.current_page)
         if self.current_sentence_idx + 1 < len(sentences):
-            self.start_playback(
-                self.current_page,
-                self.current_sentence_idx + 1,
-                self.voice,
-                self.language,
-                self.speed_factor,
-                self.engine,
-            )
+            self.current_sentence_idx += 1
+            self._play_current_sentence(token)
         elif self.doc and self.current_page + 1 < len(self.doc):
             self._advance_to_page(self.current_page + 1, 0)
+        else:
+            self.stop()
 
     def prev_sentence(self) -> None:
         """Go back to the previous sentence."""
@@ -448,8 +470,8 @@ class TtsCoordinator:
         if self.on_highlight_update:
             self.on_highlight_update(self.current_page, self.current_sentence_idx, 0)
 
-        # Start mpv process
-        self._start_mpv(item.audio_path)
+        # Start or update mpv playback
+        self._play_file_in_mpv(item.audio_path)
         self._start_clock_timer()
 
         # Trigger background lookahead pre-buffer of next sentence
@@ -600,7 +622,15 @@ class TtsCoordinator:
     # mpv Process and Audio Clock Synchronization
     # ------------------------------------------------------------------
 
-    def _start_mpv(self, audio_path: str) -> None:
+    def _ensure_mpv_running(self) -> None:
+        """Ensure persistent mpv process is alive in idle mode."""
+        if (
+            self._audio_process is not None
+            and self._audio_process.poll() is None
+            and os.path.exists(self._mpv_ipc_path)
+        ):
+            return
+
         self._terminate_mpv()
         self._cleanup_ipc()
 
@@ -608,9 +638,9 @@ class TtsCoordinator:
             "mpv",
             "--no-video",
             "--quiet",
+            "--idle=yes",
             f"--input-ipc-server={self._mpv_ipc_path}",
             f"--speed={self.speed_factor}",
-            audio_path,
         ]
 
         self._audio_process = subprocess.Popen(
@@ -619,15 +649,28 @@ class TtsCoordinator:
             stderr=subprocess.DEVNULL,
         )
 
+        import time
+        for _ in range(30):
+            if os.path.exists(self._mpv_ipc_path):
+                break
+            time.sleep(0.015)
+
         token = self._playback_token
 
         def monitor() -> None:
             proc = self._audio_process
             if proc:
                 proc.wait()
-                GLib.idle_add(self._on_mpv_finished, token)
+                GLib.idle_add(self._on_mpv_process_exited, token)
 
         threading.Thread(target=monitor, daemon=True).start()
+
+    def _play_file_in_mpv(self, audio_path: str) -> None:
+        """Load and play file instantly using mpv loadfile IPC."""
+        self._ensure_mpv_running()
+        self._playing_file = True
+        self._file_started = False
+        self._send_mpv_command(["loadfile", audio_path, "replace"])
 
     def _start_clock_timer(self) -> None:
         self._stop_clock_timer()
@@ -644,23 +687,27 @@ class TtsCoordinator:
             return True
 
         current_time = self._query_mpv_time_pos()
-        if current_time is None:
-            return True
+        if current_time is not None and current_time >= 0:
+            self._file_started = True
+            if self.active_boundaries:
+                idx = find_boundary_index_at_time(self.active_boundaries, current_time)
+                word_info = self.active_boundaries[idx]
+                actual_word_idx = word_info.word_index
 
-        if not self.active_boundaries:
-            return True
-
-        idx = find_boundary_index_at_time(self.active_boundaries, current_time)
-        word_info = self.active_boundaries[idx]
-        actual_word_idx = word_info.word_index
-
-        if actual_word_idx != self._last_notified_word_idx:
-            self._last_notified_word_idx = actual_word_idx
-            self.active_word_index = actual_word_idx
-            if self.on_highlight_update:
-                self.on_highlight_update(
-                    self.current_page, self.current_sentence_idx, actual_word_idx
-                )
+                if actual_word_idx != self._last_notified_word_idx:
+                    self._last_notified_word_idx = actual_word_idx
+                    self.active_word_index = actual_word_idx
+                    if self.on_highlight_update:
+                        self.on_highlight_update(
+                            self.current_page, self.current_sentence_idx, actual_word_idx
+                        )
+        elif self._file_started and self._playing_file:
+            is_idle = self._query_mpv_idle()
+            if is_idle:
+                self._playing_file = False
+                self._file_started = False
+                token = self._playback_token
+                GLib.idle_add(self._advance_to_next_sentence, token)
 
         return True
 
@@ -680,6 +727,27 @@ class TtsCoordinator:
             return float(val) if val is not None else None
         except Exception:
             return None
+
+    def _query_mpv_idle(self) -> bool:
+        if not os.path.exists(self._mpv_ipc_path):
+            return False
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(0.02)
+            sock.connect(self._mpv_ipc_path)
+            cmd = {"command": ["get_property", "idle-active"]}
+            sock.sendall((json.dumps(cmd) + "\n").encode())
+            data = sock.recv(1024).decode()
+            sock.close()
+            res = json.loads(data.strip().split("\n")[0])
+            return bool(res.get("data") is True)
+        except Exception:
+            return False
+
+    def _on_mpv_process_exited(self, token: int) -> None:
+        if token != self._playback_token or self._stop_requested:
+            return
+        self.stop()
 
     def _send_mpv_command(self, cmd_args: list) -> bool:
         if not os.path.exists(self._mpv_ipc_path):
