@@ -274,3 +274,4 @@ class TtsSegmenter:
                     best_match = (sentence, word.word_index)
 
         return best_match
+

@@ -741,3 +741,4 @@ class TtsCoordinator:
     def _emit_state_changed(self) -> None:
         if self.on_state_changed:
             self.on_state_changed()
+
