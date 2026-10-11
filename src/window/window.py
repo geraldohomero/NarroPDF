@@ -16,7 +16,7 @@ except ImportError:
 
 from ..constants import ViewMode, ToolMode, AnnotationType
 from ..utils import detect_language_from_text
-from ..tts_engine import TtsEngine
+from ..tts_coordinator import TtsCoordinator
 from ..pdf_renderer import PdfRenderer
 from ..text_selection import TextSelectionHandler
 from ..locale import _
@@ -49,13 +49,15 @@ class MainWindow(
         self.set_default_size(1150, 750)
 
         # Core logic helper instances
-        self.tts = TtsEngine()
+        self.tts = TtsCoordinator()
         self.renderer = PdfRenderer()
         self.selection = TextSelectionHandler()
 
         # State tracking
         self.current_page: int = 0
         self.pdf_path: str | None = None
+        self.active_tts_sentence = None
+        self.active_tts_word_index: int = -1
         
         # Settings state
         from ..settings import load_settings
@@ -88,8 +90,12 @@ class MainWindow(
         self.current_search_match_index: int = -1
 
         # Set up callbacks
-        self.tts.set_status_callback(self.set_status)
-        self.tts.set_state_changed_callback(self.update_playback_bar_state)
+        self.tts.set_callbacks(
+            on_highlight_update=self._on_tts_highlight_update,
+            on_status_update=self.set_status,
+            on_state_changed=self.update_playback_bar_state,
+            on_page_change_requested=self._navigate_to_page_index,
+        )
 
         # Connect destroy signal for safety cleanup
         self.connect("destroy", self._on_destroy)
@@ -99,6 +105,29 @@ class MainWindow(
         self._setup_actions()
         self._update_controls_sensitivity()
         self._update_save_state()
+
+    def _on_tts_highlight_update(self, page_idx: int, sentence_idx: int, word_idx: int) -> None:
+        if sentence_idx == -1:
+            self.active_tts_sentence = None
+            self.active_tts_word_index = -1
+        else:
+            sentences = self.tts.get_sentences_for_page(page_idx)
+            if 0 <= sentence_idx < len(sentences):
+                self.active_tts_sentence = sentences[sentence_idx]
+                self.active_tts_word_index = word_idx
+                if hasattr(self, "_scroll_to_tts_sentence"):
+                    self._scroll_to_tts_sentence(self.active_tts_sentence)
+            else:
+                self.active_tts_sentence = None
+                self.active_tts_word_index = -1
+
+        # Request overlay redraw
+        if self.view_mode == ViewMode.CONTINUOUS:
+            if self.renderer.page_widgets and 0 <= page_idx < len(self.renderer.page_widgets):
+                self.renderer.page_widgets[page_idx]["drawing_area"].queue_draw()
+        else:
+            if self.current_page == page_idx and hasattr(self, "selection_layer"):
+                self.selection_layer.queue_draw()
 
     def _on_destroy(self, *args) -> None:
         self.tts.cleanup()

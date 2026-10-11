@@ -200,12 +200,52 @@ class WindowAnnotationsMixin:
 
     def _draw_selection_overlay(self, area: Gtk.DrawingArea, cr: Any, w: int, h: int) -> None:
         self._render_highlights_on_cr(cr)
+        self._render_tts_highlights_on_cr(cr, self.current_page)
         self._render_search_highlights_on_cr(cr, self.current_page)
 
     def _draw_page_selection_overlay(self, area: Gtk.DrawingArea, cr: Any, w: int, h: int, page_idx: int) -> None:
         if self.current_page == page_idx:
             self._render_highlights_on_cr(cr)
+        self._render_tts_highlights_on_cr(cr, page_idx)
         self._render_search_highlights_on_cr(cr, page_idx)
+
+    def _render_tts_highlights_on_cr(self, cr: Any, page_idx: int) -> None:
+        sentence = getattr(self, "active_tts_sentence", None)
+        if not sentence or sentence.page_index != page_idx:
+            return
+
+        zoom = self.renderer.zoom
+
+        # 1. Destaque suave da Frase Inteira
+        cr.set_source_rgba(1.0, 0.90, 0.30, 0.28)
+        for r in sentence.line_rects:
+            x = r.x0 * zoom
+            y = r.y0 * zoom
+            w = (r.x1 - r.x0) * zoom
+            h = (r.y1 - r.y0) * zoom
+            cr.rectangle(x, y, w, h)
+            cr.fill()
+
+        # 2. Destaque da Palavra Ativa
+        word_idx = getattr(self, "active_tts_word_index", -1)
+        if 0 <= word_idx < len(sentence.words):
+            word = sentence.words[word_idx]
+            wr = word.rect
+            wx = wr.x0 * zoom
+            wy = wr.y0 * zoom
+            ww = (wr.x1 - wr.x0) * zoom
+            wh = (wr.y1 - wr.y0) * zoom
+
+            # Fundo âmbar vibrante
+            cr.set_source_rgba(0.984, 0.549, 0.0, 0.85)
+            cr.rectangle(wx, wy, ww, wh)
+            cr.fill()
+
+            # Borda sutil de ênfase
+            cr.set_source_rgba(0.90, 0.40, 0.0, 0.95)
+            cr.set_line_width(1.0)
+            cr.rectangle(wx, wy, ww, wh)
+            cr.stroke()
 
     def _render_highlights_on_cr(self, cr: Any) -> None:
         selected = self.selection.get_selected_words()
