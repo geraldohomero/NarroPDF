@@ -50,6 +50,7 @@ class WindowNavigationMixin:
             doc = fitz.open(path)
             self.pdf_path = path
             self.current_page = 0
+            self.selected_annotation = None
             self.selection.clear_selection()
             self.renderer.set_document(doc)
             self.tts.set_document(doc)
@@ -129,6 +130,7 @@ class WindowNavigationMixin:
                 vadj.set_value(min(target_y, vadj.get_upper() - vadj.get_page_size()))
                 self._is_navigating = False
             else:
+                self.selected_annotation = None
                 self.selection.clear_selection()
                 self._render_view()
 
@@ -156,6 +158,11 @@ class WindowNavigationMixin:
             click = Gtk.GestureClick()
             click.connect("pressed", self._on_continuous_click_pressed, i)
             page_data["drawing_area"].add_controller(click)
+
+            motion = Gtk.EventControllerMotion()
+            motion.connect("motion", self._on_continuous_selection_motion, i)
+            motion.connect("leave", self._on_continuous_selection_motion_leave, i)
+            page_data["drawing_area"].add_controller(motion)
 
         self.scroller.set_child(pages_box)
 
@@ -226,6 +233,10 @@ class WindowNavigationMixin:
                     self._show_selection_popover(self.selection_layer)
                 self.selection_layer.queue_draw()
             elif n_press == 1:
+                # If clicked on an existing resize handle, don't clear selection!
+                if getattr(self, "selected_annotation", None) and self._hit_test_handle(x, y):
+                    return
+
                 # Check if hit an existing annotation
                 if self.renderer.doc:
                     page = self.renderer.doc.load_page(self.current_page)
@@ -237,7 +248,6 @@ class WindowNavigationMixin:
                             lo, hi = bounds
                             self.selected_annotation = {
                                 "page_idx": self.current_page,
-                                "annot": annot_hit,
                                 "xref": annot_hit.xref,
                                 "bounds": (lo, hi),
                             }
@@ -263,6 +273,7 @@ class WindowNavigationMixin:
                 self._handle_drag_mode = handle
                 self._drag_started = True
                 self.popover.popdown()
+                self.selection_layer.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
 
     def _on_single_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float) -> None:
         if self.tool_mode != ToolMode.HAND:
@@ -298,22 +309,27 @@ class WindowNavigationMixin:
         if self.tool_mode != ToolMode.HAND:
             if getattr(self, "_handle_drag_mode", None):
                 self._handle_drag_mode = None
-                if getattr(self, "selected_annotation", None) and self.renderer.doc:
+                self._update_cursor()
+                sel_annot = getattr(self, "selected_annotation", None)
+                if sel_annot and self.renderer.doc:
                     line_rects = self.selection.get_selected_line_rects()
                     if line_rects:
-                        page = self.renderer.doc.load_page(self.current_page)
-                        old_annot = self.selected_annotation["annot"]
-                        new_annot = AnnotationManager.update_geometry(page, old_annot, line_rects)
-                        bounds = self.selection.get_selected_bounds()
-                        self.selected_annotation = {
-                            "page_idx": self.current_page,
-                            "annot": new_annot,
-                            "xref": new_annot.xref,
-                            "bounds": bounds or (0, 0),
-                        }
-                        self.has_unsaved_changes = True
-                        self._update_save_state()
-                        self._render_view()
+                        try:
+                            page = self.renderer.doc.load_page(self.current_page)
+                            new_annot = AnnotationManager.update_geometry(page, sel_annot["xref"], line_rects)
+                            bounds = self.selection.get_selected_bounds()
+                            self.selected_annotation = {
+                                "page_idx": self.current_page,
+                                "xref": new_annot.xref,
+                                "bounds": bounds or (0, 0),
+                            }
+                            self.has_unsaved_changes = True
+                            self._update_save_state()
+                            self._render_view()
+                            if bounds:
+                                self.selection.set_selection_bounds(bounds[0], bounds[1])
+                        except Exception as exc:
+                            log.error("Failed to update annotation geometry on single drag end: %s", exc)
                 self._show_selection_popover(self.selection_layer)
                 self.selection_layer.queue_draw()
                 return
@@ -323,6 +339,24 @@ class WindowNavigationMixin:
                 if has_sel:
                     self._show_selection_popover(self.selection_layer)
                 self.selection_layer.queue_draw()
+
+    def _on_selection_motion(self, controller: Gtk.EventControllerMotion, x: float, y: float) -> None:
+        if getattr(self, "_handle_drag_mode", None):
+            self.selection_layer.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
+            return
+
+        sel_annot = getattr(self, "selected_annotation", None)
+        if sel_annot and sel_annot.get("page_idx") == self.current_page:
+            handle = self._hit_test_handle(x, y)
+            if handle in ("start", "end"):
+                self.selection_layer.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
+                return
+
+        self._update_cursor()
+
+    def _on_selection_motion_leave(self, controller: Gtk.EventControllerMotion) -> None:
+        if not getattr(self, "_handle_drag_mode", None):
+            self._update_cursor()
 
     # Continuous Page Click and Drag
     def _on_continuous_click_pressed(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float, page_idx: int) -> None:
@@ -351,6 +385,10 @@ class WindowNavigationMixin:
                 for page_data in self.renderer.page_widgets:
                     page_data["drawing_area"].queue_draw()
             elif n_press == 1:
+                # If clicked on an existing resize handle, don't clear selection!
+                if getattr(self, "selected_annotation", None) and self._hit_test_handle(x, y):
+                    return
+
                 if self.renderer.doc:
                     page = self.renderer.doc.load_page(page_idx)
                     pt = (x / self.renderer.zoom, y / self.renderer.zoom)
@@ -366,7 +404,6 @@ class WindowNavigationMixin:
                             lo, hi = bounds
                             self.selected_annotation = {
                                 "page_idx": page_idx,
-                                "annot": annot_hit,
                                 "xref": annot_hit.xref,
                                 "bounds": (lo, hi),
                             }
@@ -395,6 +432,9 @@ class WindowNavigationMixin:
                 self._handle_drag_mode = handle
                 self._drag_started = True
                 self.popover.popdown()
+                if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
+                    widget = self.renderer.page_widgets[page_idx]["drawing_area"]
+                    widget.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
 
     def _on_continuous_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float, page_idx: int) -> None:
         if self.tool_mode != ToolMode.HAND:
@@ -440,22 +480,33 @@ class WindowNavigationMixin:
         if self.tool_mode != ToolMode.HAND:
             if getattr(self, "_handle_drag_mode", None):
                 self._handle_drag_mode = None
-                if getattr(self, "selected_annotation", None) and self.renderer.doc:
+                if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
+                    widget = self.renderer.page_widgets[page_idx]["drawing_area"]
+                    if self.tool_mode == ToolMode.HAND:
+                        widget.set_cursor(Gdk.Cursor.new_from_name("grab", None))
+                    else:
+                        widget.set_cursor(Gdk.Cursor.new_from_name("text", None))
+
+                sel_annot = getattr(self, "selected_annotation", None)
+                if sel_annot and self.renderer.doc:
                     line_rects = self.selection.get_selected_line_rects()
                     if line_rects:
-                        page = self.renderer.doc.load_page(self._drag_page_idx)
-                        old_annot = self.selected_annotation["annot"]
-                        new_annot = AnnotationManager.update_geometry(page, old_annot, line_rects)
-                        bounds = self.selection.get_selected_bounds()
-                        self.selected_annotation = {
-                            "page_idx": self._drag_page_idx,
-                            "annot": new_annot,
-                            "xref": new_annot.xref,
-                            "bounds": bounds or (0, 0),
-                        }
-                        self.has_unsaved_changes = True
-                        self._update_save_state()
-                        self._render_view()
+                        try:
+                            page = self.renderer.doc.load_page(self._drag_page_idx)
+                            new_annot = AnnotationManager.update_geometry(page, sel_annot["xref"], line_rects)
+                            bounds = self.selection.get_selected_bounds()
+                            self.selected_annotation = {
+                                "page_idx": self._drag_page_idx,
+                                "xref": new_annot.xref,
+                                "bounds": bounds or (0, 0),
+                            }
+                            self.has_unsaved_changes = True
+                            self._update_save_state()
+                            self._render_view()
+                            if bounds:
+                                self.selection.set_selection_bounds(bounds[0], bounds[1])
+                        except Exception as exc:
+                            log.error("Failed to update annotation geometry on continuous drag end: %s", exc)
                 if self.renderer.page_widgets and self._drag_page_idx < len(self.renderer.page_widgets):
                     widget = self.renderer.page_widgets[self._drag_page_idx]["drawing_area"]
                     self._show_selection_popover(widget)
@@ -470,6 +521,32 @@ class WindowNavigationMixin:
                     self._show_selection_popover(widget)
                 for page_data in self.renderer.page_widgets:
                     page_data["drawing_area"].queue_draw()
+
+    def _on_continuous_selection_motion(self, controller: Gtk.EventControllerMotion, x: float, y: float, page_idx: int) -> None:
+        widget = controller.get_widget()
+        if getattr(self, "_handle_drag_mode", None):
+            widget.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
+            return
+
+        sel_annot = getattr(self, "selected_annotation", None)
+        if sel_annot and sel_annot.get("page_idx") == page_idx:
+            handle = self._hit_test_handle(x, y)
+            if handle in ("start", "end"):
+                widget.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
+                return
+
+        if self.tool_mode == ToolMode.HAND:
+            widget.set_cursor(Gdk.Cursor.new_from_name("grab", None))
+        else:
+            widget.set_cursor(Gdk.Cursor.new_from_name("text", None))
+
+    def _on_continuous_selection_motion_leave(self, controller: Gtk.EventControllerMotion, page_idx: int) -> None:
+        if not getattr(self, "_handle_drag_mode", None):
+            widget = controller.get_widget()
+            if self.tool_mode == ToolMode.HAND:
+                widget.set_cursor(Gdk.Cursor.new_from_name("grab", None))
+            else:
+                widget.set_cursor(Gdk.Cursor.new_from_name("text", None))
 
     # ------------------------------------------------------------------
     # Mouse Scroll & Zoom Options

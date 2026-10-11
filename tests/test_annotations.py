@@ -70,5 +70,25 @@ class TestAnnotationManager(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(len(list(self.page.annots())), 0)
 
+    def test_update_geometry_by_xref_after_page_reload(self):
+        r1 = fitz.Rect(50, 50, 200, 65)
+        _, xrefs = AnnotationManager.apply(self.page, AnnotationType.HIGHLIGHT, [r1], (0.0, 1.0, 0.0), 0.7)
+        del self.page
+        page2 = self.doc.load_page(0)
+        r_new = [fitz.Rect(50, 50, 200, 65), fitz.Rect(50, 70, 250, 85)]
+        new_annot = AnnotationManager.update_geometry(page2, xrefs[0], r_new)
+        self.assertIsNotNone(new_annot)
+        self.assertEqual(len(new_annot.vertices), 8)
+        self.assertEqual(len(list(page2.annots())), 1)
+
+    def test_delete_annot_by_xref_after_page_reload(self):
+        r = fitz.Rect(50, 50, 200, 65)
+        _, xrefs = AnnotationManager.apply(self.page, AnnotationType.HIGHLIGHT, [r], (1.0, 1.0, 0.0))
+        del self.page
+        page2 = self.doc.load_page(0)
+        success = AnnotationManager.delete_annot(page2, xrefs[0])
+        self.assertTrue(success)
+        self.assertEqual(len(list(page2.annots())), 0)
+
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,7 @@ class WindowAnnotationsMixin:
         try:
             label, xrefs = AnnotationManager.apply(page, annot_type, line_rects, rgb, opacity)
             self.annotation_history.append((self.current_page, xrefs))
+            self.selected_annotation = None
             self.selection.clear_selection()
             self.has_unsaved_changes = True
             self._update_save_state()
@@ -146,14 +147,23 @@ class WindowAnnotationsMixin:
         if sel_annot and self.renderer.doc:
             try:
                 page = self.renderer.doc.load_page(sel_annot["page_idx"])
-                annot = sel_annot["annot"]
-                rgb = (self.current_color.red, self.current_color.green, self.current_color.blue)
-                annot.set_colors(stroke=rgb)
-                annot.set_opacity(self.current_color.alpha)
-                annot.update()
-                self.has_unsaved_changes = True
-                self._update_save_state()
-                self._render_view()
+                annot = AnnotationManager._resolve_annot(page, sel_annot["xref"])
+                if annot:
+                    rgb = (self.current_color.red, self.current_color.green, self.current_color.blue)
+                    annot.set_colors(stroke=rgb)
+                    annot.set_opacity(self.current_color.alpha)
+                    annot.update()
+                    self.has_unsaved_changes = True
+                    self._update_save_state()
+                    bounds = sel_annot.get("bounds")
+                    self._render_view()
+                    if bounds:
+                        self.selection.set_selection_bounds(bounds[0], bounds[1])
+                    if hasattr(self, "selection_layer"):
+                        self.selection_layer.queue_draw()
+                    if hasattr(self, "renderer") and self.renderer.page_widgets:
+                        for page_data in self.renderer.page_widgets:
+                            page_data["drawing_area"].queue_draw()
             except Exception as exc:
                 log.error("Failed to update annotation appearance: %s", exc)
 
@@ -164,8 +174,7 @@ class WindowAnnotationsMixin:
 
         try:
             page = self.renderer.doc.load_page(sel_annot["page_idx"])
-            annot = sel_annot["annot"]
-            AnnotationManager.delete_annot(page, annot)
+            AnnotationManager.delete_annot(page, sel_annot["xref"])
             self.selected_annotation = None
             self.selection.clear_selection()
             self.has_unsaved_changes = True
@@ -372,21 +381,27 @@ class WindowAnnotationsMixin:
             self.btn_delete_annot.set_visible(is_annot)
 
         if is_annot:
-            annot = self.selected_annotation.get("annot")
-            if annot:
-                colors = annot.colors or {}
-                stroke = colors.get("stroke")
-                if stroke and len(stroke) >= 3:
-                    c = Gdk.RGBA()
-                    c.red = stroke[0]
-                    c.green = stroke[1]
-                    c.blue = stroke[2]
-                    c.alpha = annot.opacity if annot.opacity >= 0 else 1.0
-                    self.current_color = c
-                    if hasattr(self, "btn_color"):
-                        self.btn_color.set_rgba(c)
-                    if hasattr(self, "pop_color_btn"):
-                        self.pop_color_btn.set_rgba(c)
+            xref = self.selected_annotation.get("xref")
+            if xref and self.renderer.doc:
+                try:
+                    page = self.renderer.doc.load_page(self.selected_annotation["page_idx"])
+                    annot = AnnotationManager._resolve_annot(page, xref)
+                    if annot:
+                        colors = annot.colors or {}
+                        stroke = colors.get("stroke")
+                        if stroke and len(stroke) >= 3:
+                            c = Gdk.RGBA()
+                            c.red = stroke[0]
+                            c.green = stroke[1]
+                            c.blue = stroke[2]
+                            c.alpha = annot.opacity if annot.opacity >= 0 else 1.0
+                            self.current_color = c
+                            if hasattr(self, "btn_color"):
+                                self.btn_color.set_rgba(c)
+                            if hasattr(self, "pop_color_btn"):
+                                self.pop_color_btn.set_rgba(c)
+                except Exception as exc:
+                    log.error("Failed to sync annotation color: %s", exc)
 
         last_word = selected[-1]
         rect = last_word["rect"]

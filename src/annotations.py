@@ -112,14 +112,29 @@ class AnnotationManager:
         return None
 
     @staticmethod
+    def _resolve_annot(page: fitz.Page, annot_or_xref: fitz.Annot | int) -> fitz.Annot | None:
+        """Helper to resolve a fitz.Annot bound to the given page."""
+        if isinstance(annot_or_xref, int):
+            try:
+                return page.load_annot(annot_or_xref)
+            except Exception:
+                pass
+        elif getattr(annot_or_xref, "xref", None):
+            try:
+                return page.load_annot(annot_or_xref.xref)
+            except Exception:
+                return annot_or_xref
+        return annot_or_xref
+
+    @staticmethod
     def update_geometry(
-        page: fitz.Page, annot: fitz.Annot, new_line_rects: list[fitz.Rect]
+        page: fitz.Page, annot_or_xref: fitz.Annot | int, new_line_rects: list[fitz.Rect]
     ) -> fitz.Annot:
         """Replace an existing annotation's geometry with new line rects.
 
         Args:
             page: PyMuPDF page containing the annotation.
-            annot: Existing annotation to replace.
+            annot_or_xref: Existing annotation or its xref ID to replace.
             new_line_rects: New bounding rects.
 
         Returns:
@@ -129,6 +144,10 @@ class AnnotationManager:
             raise ValueError("No selection rects provided for updating geometry.")
 
         import fitz
+
+        annot = AnnotationManager._resolve_annot(page, annot_or_xref)
+        if annot is None:
+            raise ValueError(f"Annotation {annot_or_xref} not found on page.")
 
         annot_type = annot.type[0]
         colors = annot.colors or {}
@@ -149,19 +168,22 @@ class AnnotationManager:
         return new_annot
 
     @staticmethod
-    def delete_annot(page: fitz.Page, annot: fitz.Annot) -> bool:
+    def delete_annot(page: fitz.Page, annot_or_xref: fitz.Annot | int) -> bool:
         """Delete an annotation safely from the page.
 
         Args:
             page: PyMuPDF page.
-            annot: Annotation to remove.
+            annot_or_xref: Annotation or its xref ID to remove.
 
         Returns:
             True if deleted successfully, False otherwise.
         """
         try:
-            page.delete_annot(annot)
-            return True
+            annot = AnnotationManager._resolve_annot(page, annot_or_xref)
+            if annot is not None:
+                page.delete_annot(annot)
+                return True
+            return False
         except Exception as exc:
             log.error("Failed to delete annotation: %s", exc)
             return False

@@ -28,6 +28,15 @@ class TestTextSelectionHandles(unittest.TestCase):
         # End handle at bottom-right of word 1 (100*2, 20*2) = (200, 40)
         self.assertEqual(end_pt, (200.0, 40.0))
 
+    def test_clamping_and_bounds_limits(self):
+        # Out-of-bounds indices are clamped to valid range [0, 2]
+        self.handler.set_selection_bounds(-5, 99)
+        self.assertEqual(self.handler.get_selected_bounds(), (0, 2))
+
+        # Reversing indices still returns (lo, hi)
+        self.handler.selection_range = (2, 0)
+        self.assertEqual(self.handler.get_selected_bounds(), (0, 2))
+
 if __name__ == "__main__":
     unittest.main()
 

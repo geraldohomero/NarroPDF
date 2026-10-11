@@ -333,6 +333,11 @@ class WindowUiMixin:
         click.connect("pressed", self._on_single_click_pressed)
         self.selection_layer.add_controller(click)
 
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_selection_motion)
+        motion.connect("leave", self._on_selection_motion_leave)
+        self.selection_layer.add_controller(motion)
+
         scroll_ctrl = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
         scroll_ctrl.connect("scroll", self._on_mouse_scroll)
         self.scroller.add_controller(scroll_ctrl)
