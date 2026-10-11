@@ -24,6 +24,7 @@ from ..constants import (
 )
 from ..utils import detect_language_from_text
 from ..text_selection import TextSelectionHandler
+from ..annotations import AnnotationManager
 from ..locale import _
 
 log = logging.getLogger(__name__)
@@ -218,13 +219,35 @@ class WindowNavigationMixin:
                     self._on_pdf_double_clicked(self.current_page, x, y)
                     return
                 # Double click: select single word
+                self.selected_annotation = None
                 hit = self.selection.begin_drag(x, y, self.renderer.zoom)
                 if hit:
                     self.selection.end_drag(0, 0, self.renderer.zoom)
                     self._show_selection_popover(self.selection_layer)
                 self.selection_layer.queue_draw()
             elif n_press == 1:
-                # Single click: clear selection
+                # Check if hit an existing annotation
+                if self.renderer.doc:
+                    page = self.renderer.doc.load_page(self.current_page)
+                    pt = (x / self.renderer.zoom, y / self.renderer.zoom)
+                    annot_hit = AnnotationManager.find_at_point(page, pt)
+                    if annot_hit:
+                        bounds = self.selection.find_word_range_for_vertices(annot_hit.vertices)
+                        if bounds:
+                            lo, hi = bounds
+                            self.selected_annotation = {
+                                "page_idx": self.current_page,
+                                "annot": annot_hit,
+                                "xref": annot_hit.xref,
+                                "bounds": (lo, hi),
+                            }
+                            self.selection.set_selection_bounds(lo, hi)
+                            self._show_selection_popover(self.selection_layer)
+                            self.selection_layer.queue_draw()
+                            return
+
+                # Single click on blank: clear selection
+                self.selected_annotation = None
                 self.popover.popdown()
                 self.selection.clear_selection()
                 self.selection_layer.queue_draw()
@@ -233,13 +256,38 @@ class WindowNavigationMixin:
         self._drag_started = False
         self._drag_start_x = start_x
         self._drag_start_y = start_y
+        self._handle_drag_mode = None
+        if getattr(self, "selected_annotation", None) and self.selected_annotation.get("page_idx") == self.current_page:
+            handle = self._hit_test_handle(start_x, start_y)
+            if handle in ("start", "end"):
+                self._handle_drag_mode = handle
+                self._drag_started = True
+                self.popover.popdown()
 
     def _on_single_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float) -> None:
         if self.tool_mode != ToolMode.HAND:
+            if getattr(self, "_handle_drag_mode", None):
+                curr_x = self._drag_start_x + offset_x
+                curr_y = self._drag_start_y + offset_y
+                target_idx = self.selection._word_index_at(curr_x, curr_y, self.renderer.zoom)
+                if target_idx is not None:
+                    bounds = self.selection.get_selected_bounds()
+                    if bounds:
+                        lo, hi = bounds
+                        if self._handle_drag_mode == "start":
+                            new_lo = min(target_idx, hi)
+                            self.selection.set_selection_bounds(new_lo, hi)
+                        elif self._handle_drag_mode == "end":
+                            new_hi = max(target_idx, lo)
+                            self.selection.set_selection_bounds(lo, new_hi)
+                        self.selection_layer.queue_draw()
+                return
+
             if not self._drag_started:
                 # Start selection only if moved > 4px
                 if abs(offset_x) > 4 or abs(offset_y) > 4:
                     self._drag_started = True
+                    self.selected_annotation = None
                     self.selection.begin_drag(self._drag_start_x, self._drag_start_y, self.renderer.zoom)
             
             if self._drag_started:
@@ -247,11 +295,34 @@ class WindowNavigationMixin:
                 self.selection_layer.queue_draw()
 
     def _on_single_drag_end(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float) -> None:
-        if self.tool_mode != ToolMode.HAND and self._drag_started:
-            has_sel = self.selection.end_drag(offset_x, offset_y, self.renderer.zoom)
-            if has_sel:
+        if self.tool_mode != ToolMode.HAND:
+            if getattr(self, "_handle_drag_mode", None):
+                self._handle_drag_mode = None
+                if getattr(self, "selected_annotation", None) and self.renderer.doc:
+                    line_rects = self.selection.get_selected_line_rects()
+                    if line_rects:
+                        page = self.renderer.doc.load_page(self.current_page)
+                        old_annot = self.selected_annotation["annot"]
+                        new_annot = AnnotationManager.update_geometry(page, old_annot, line_rects)
+                        bounds = self.selection.get_selected_bounds()
+                        self.selected_annotation = {
+                            "page_idx": self.current_page,
+                            "annot": new_annot,
+                            "xref": new_annot.xref,
+                            "bounds": bounds or (0, 0),
+                        }
+                        self.has_unsaved_changes = True
+                        self._update_save_state()
+                        self._render_view()
                 self._show_selection_popover(self.selection_layer)
-            self.selection_layer.queue_draw()
+                self.selection_layer.queue_draw()
+                return
+
+            if self._drag_started:
+                has_sel = self.selection.end_drag(offset_x, offset_y, self.renderer.zoom)
+                if has_sel:
+                    self._show_selection_popover(self.selection_layer)
+                self.selection_layer.queue_draw()
 
     # Continuous Page Click and Drag
     def _on_continuous_click_pressed(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float, page_idx: int) -> None:
@@ -270,6 +341,7 @@ class WindowNavigationMixin:
                 if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
                     self.selection.set_words(self.renderer.page_widgets[page_idx]["words"])
                     
+                self.selected_annotation = None
                 hit = self.selection.begin_drag(x, y, self.renderer.zoom)
                 if hit:
                     self.selection.end_drag(0, 0, self.renderer.zoom)
@@ -279,6 +351,33 @@ class WindowNavigationMixin:
                 for page_data in self.renderer.page_widgets:
                     page_data["drawing_area"].queue_draw()
             elif n_press == 1:
+                if self.renderer.doc:
+                    page = self.renderer.doc.load_page(page_idx)
+                    pt = (x / self.renderer.zoom, y / self.renderer.zoom)
+                    annot_hit = AnnotationManager.find_at_point(page, pt)
+                    if annot_hit:
+                        self.current_page = page_idx
+                        self._update_controls_sensitivity()
+                        self.page_entry.set_text(str(self.current_page + 1))
+                        if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
+                            self.selection.set_words(self.renderer.page_widgets[page_idx]["words"])
+                        bounds = self.selection.find_word_range_for_vertices(annot_hit.vertices)
+                        if bounds:
+                            lo, hi = bounds
+                            self.selected_annotation = {
+                                "page_idx": page_idx,
+                                "annot": annot_hit,
+                                "xref": annot_hit.xref,
+                                "bounds": (lo, hi),
+                            }
+                            self.selection.set_selection_bounds(lo, hi)
+                            widget = self.renderer.page_widgets[page_idx]["drawing_area"]
+                            self._show_selection_popover(widget)
+                            for page_data in self.renderer.page_widgets:
+                                page_data["drawing_area"].queue_draw()
+                            return
+
+                self.selected_annotation = None
                 self.popover.popdown()
                 self.selection.clear_selection()
                 for page_data in self.renderer.page_widgets:
@@ -289,13 +388,38 @@ class WindowNavigationMixin:
         self._drag_start_x = start_x
         self._drag_start_y = start_y
         self._drag_page_idx = page_idx
+        self._handle_drag_mode = None
+        if getattr(self, "selected_annotation", None) and self.selected_annotation.get("page_idx") == page_idx:
+            handle = self._hit_test_handle(start_x, start_y)
+            if handle in ("start", "end"):
+                self._handle_drag_mode = handle
+                self._drag_started = True
+                self.popover.popdown()
 
     def _on_continuous_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float, page_idx: int) -> None:
         if self.tool_mode != ToolMode.HAND:
+            if getattr(self, "_handle_drag_mode", None):
+                curr_x = self._drag_start_x + offset_x
+                curr_y = self._drag_start_y + offset_y
+                target_idx = self.selection._word_index_at(curr_x, curr_y, self.renderer.zoom)
+                if target_idx is not None:
+                    bounds = self.selection.get_selected_bounds()
+                    if bounds:
+                        lo, hi = bounds
+                        if self._handle_drag_mode == "start":
+                            new_lo = min(target_idx, hi)
+                            self.selection.set_selection_bounds(new_lo, hi)
+                        elif self._handle_drag_mode == "end":
+                            new_hi = max(target_idx, lo)
+                            self.selection.set_selection_bounds(lo, new_hi)
+                        for page_data in self.renderer.page_widgets:
+                            page_data["drawing_area"].queue_draw()
+                return
+
             if not self._drag_started:
                 if abs(offset_x) > 4 or abs(offset_y) > 4:
                     self._drag_started = True
-                    
+                    self.selected_annotation = None
                     self.current_page = self._drag_page_idx
                     self._update_controls_sensitivity()
                     self.page_entry.set_text(str(self.current_page + 1))
@@ -313,13 +437,39 @@ class WindowNavigationMixin:
                     page_data["drawing_area"].queue_draw()
 
     def _on_continuous_drag_end(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float, page_idx: int) -> None:
-        if self.tool_mode != ToolMode.HAND and self._drag_started:
-            has_sel = self.selection.end_drag(offset_x, offset_y, self.renderer.zoom)
-            if has_sel:
-                widget = self.renderer.page_widgets[self._drag_page_idx]["drawing_area"]
-                self._show_selection_popover(widget)
-            for page_data in self.renderer.page_widgets:
-                page_data["drawing_area"].queue_draw()
+        if self.tool_mode != ToolMode.HAND:
+            if getattr(self, "_handle_drag_mode", None):
+                self._handle_drag_mode = None
+                if getattr(self, "selected_annotation", None) and self.renderer.doc:
+                    line_rects = self.selection.get_selected_line_rects()
+                    if line_rects:
+                        page = self.renderer.doc.load_page(self._drag_page_idx)
+                        old_annot = self.selected_annotation["annot"]
+                        new_annot = AnnotationManager.update_geometry(page, old_annot, line_rects)
+                        bounds = self.selection.get_selected_bounds()
+                        self.selected_annotation = {
+                            "page_idx": self._drag_page_idx,
+                            "annot": new_annot,
+                            "xref": new_annot.xref,
+                            "bounds": bounds or (0, 0),
+                        }
+                        self.has_unsaved_changes = True
+                        self._update_save_state()
+                        self._render_view()
+                if self.renderer.page_widgets and self._drag_page_idx < len(self.renderer.page_widgets):
+                    widget = self.renderer.page_widgets[self._drag_page_idx]["drawing_area"]
+                    self._show_selection_popover(widget)
+                for page_data in self.renderer.page_widgets:
+                    page_data["drawing_area"].queue_draw()
+                return
+
+            if self._drag_started:
+                has_sel = self.selection.end_drag(offset_x, offset_y, self.renderer.zoom)
+                if has_sel:
+                    widget = self.renderer.page_widgets[self._drag_page_idx]["drawing_area"]
+                    self._show_selection_popover(widget)
+                for page_data in self.renderer.page_widgets:
+                    page_data["drawing_area"].queue_draw()
 
     # ------------------------------------------------------------------
     # Mouse Scroll & Zoom Options
