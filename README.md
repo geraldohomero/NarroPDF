@@ -1,7 +1,7 @@
 # NarroPDF
 
 <p align="center">
-  <img src="flatpak/org.geraldohomero.NarroPdf.png" alt="NarroPDF Logo" width="128"/>
+  <img src="flatpak/logo.png" alt="NarroPDF Logo" width="128"/>
 </p>
 
 **NarroPDF** é um leitor e anotador de arquivos PDF moderno, minimalista e acessível, desenvolvido em Python usando a biblioteca gráfica **GTK4** e **Libadwaita**. Ele combina visualização avançada de documentos, ferramentas de anotação de texto e um sintetizador de voz integrado (Text-to-Speech) com sincronização em tempo real.
