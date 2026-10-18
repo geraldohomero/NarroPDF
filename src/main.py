@@ -77,6 +77,7 @@ class LeitorPDFApp(Adw.Application):
             "win.set-tool-highlight": ["1"],
             "win.set-tool-underline": ["2"],
             "win.undo": ["<Control>z"],
+            "win.redo": ["<Control><Shift>z", "<Control>y"],
             "win.toggle-search": ["<Control>f"],
         }
         for action, accels in shortcuts.items():

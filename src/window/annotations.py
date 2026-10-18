@@ -10,7 +10,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, Gtk
 
 from ..constants import AnnotationType, ToolMode, ViewMode
-from ..annotations import AnnotationManager
+from ..annotations import AnnotationManager, AnnotationSnapshot, AnnotationCommand
 from ..locale import _
 
 log = logging.getLogger(__name__)
@@ -24,7 +24,18 @@ class WindowAnnotationsMixin:
             if self.popover.get_parent() is not None:
                 self.popover.unparent()
 
-    def _apply_annotation(self, annot_type: AnnotationType) -> None:
+    def _record_annotation_command(self, cmd: AnnotationCommand) -> None:
+        """Push an annotation command onto the undo stack and clear redo stack."""
+        if not hasattr(self, "undo_stack"):
+            self.undo_stack = []
+        if not hasattr(self, "redo_stack"):
+            self.redo_stack = []
+        self.undo_stack.append(cmd)
+        self.redo_stack.clear()
+        self.has_unsaved_changes = True
+        self._update_save_state()
+
+    def _apply_annotation(self, annot_type: AnnotationType, content: str = "") -> None:
         if not self.renderer.doc:
             return
 
@@ -37,12 +48,19 @@ class WindowAnnotationsMixin:
         opacity = self.current_color.alpha
 
         try:
-            label, xrefs = AnnotationManager.apply(page, annot_type, line_rects, rgb, opacity)
-            self.annotation_history.append((self.current_page, xrefs))
+            label, xrefs = AnnotationManager.apply(page, annot_type, line_rects, rgb, opacity, content=content)
+            after_snap = AnnotationManager.snapshot_from_annot(page, self.current_page, xrefs[0])
+            self._record_annotation_command(
+                AnnotationCommand(
+                    action="create",
+                    page_idx=self.current_page,
+                    before=None,
+                    after=after_snap,
+                    current_xref=xrefs[0],
+                )
+            )
             self.selected_annotation = None
             self.selection.clear_selection()
-            self.has_unsaved_changes = True
-            self._update_save_state()
             self._render_view()
             self.set_status(f"{_('annot_applied')} {label}")
         except Exception as exc:
@@ -52,28 +70,82 @@ class WindowAnnotationsMixin:
     def _on_undo(self, action: Gio.SimpleAction = None, param: Any = None) -> None:
         if not self.renderer.doc:
             return
-        if not self.annotation_history:
+        if not getattr(self, "undo_stack", None):
             self.set_status("Nada para desfazer.")
             return
 
-        page_num, xrefs = self.annotation_history.pop()
-        page = self.renderer.doc.load_page(page_num)
+        cmd = self.undo_stack.pop()
+        page = self.renderer.doc.load_page(cmd.page_idx)
 
-        deleted_any = False
-        for xref in xrefs:
-            annot = page.first_annot
-            while annot:
-                if annot.xref == xref:
-                    page.delete_annot(annot)
-                    deleted_any = True
-                    break
-                annot = annot.next
+        if cmd.action == "create":
+            if cmd.current_xref is not None:
+                AnnotationManager.delete_annot(page, cmd.current_xref)
+                cmd.current_xref = None
+            if getattr(self, "selected_annotation", None) and self.selected_annotation.get("xref") == cmd.current_xref:
+                self.selected_annotation = None
+                self.selection.clear_selection()
+        elif cmd.action == "delete":
+            if cmd.before:
+                new_xref = AnnotationManager.restore_snapshot(page, cmd.before)
+                cmd.current_xref = new_xref
+        elif cmd.action == "modify":
+            if cmd.current_xref is not None:
+                AnnotationManager.delete_annot(page, cmd.current_xref)
+            if cmd.before:
+                new_xref = AnnotationManager.restore_snapshot(page, cmd.before)
+                cmd.current_xref = new_xref
+                if getattr(self, "selected_annotation", None):
+                    self.selected_annotation = None
+                    self.selection.clear_selection()
 
-        if deleted_any:
-            self.has_unsaved_changes = len(self.annotation_history) > 0
-            self._update_save_state()
-            self._render_view()
-            self.set_status("Anotação desfeita.")
+        if not hasattr(self, "redo_stack"):
+            self.redo_stack = []
+        self.redo_stack.append(cmd)
+
+        self.has_unsaved_changes = True
+        self._update_save_state()
+        self._render_view()
+        self.set_status("Ação desfeita.")
+
+    def _on_redo(self, action: Gio.SimpleAction = None, param: Any = None) -> None:
+        if not self.renderer.doc:
+            return
+        if not getattr(self, "redo_stack", None):
+            self.set_status("Nada para refazer.")
+            return
+
+        cmd = self.redo_stack.pop()
+        page = self.renderer.doc.load_page(cmd.page_idx)
+
+        if cmd.action == "create":
+            if cmd.after:
+                new_xref = AnnotationManager.restore_snapshot(page, cmd.after)
+                cmd.current_xref = new_xref
+        elif cmd.action == "delete":
+            if cmd.current_xref is not None:
+                AnnotationManager.delete_annot(page, cmd.current_xref)
+                cmd.current_xref = None
+            if getattr(self, "selected_annotation", None):
+                self.selected_annotation = None
+                self.selection.clear_selection()
+        elif cmd.action == "modify":
+            if cmd.current_xref is not None:
+                AnnotationManager.delete_annot(page, cmd.current_xref)
+            if cmd.after:
+                new_xref = AnnotationManager.restore_snapshot(page, cmd.after)
+                cmd.current_xref = new_xref
+                if getattr(self, "selected_annotation", None):
+                    self.selected_annotation = None
+                    self.selection.clear_selection()
+
+        if not hasattr(self, "undo_stack"):
+            self.undo_stack = []
+        self.undo_stack.append(cmd)
+
+        self.has_unsaved_changes = True
+        self._update_save_state()
+        self._render_view()
+        self.set_status("Ação refeita.")
 
     def _get_closest_opacity_index(self, alpha: float) -> int:
         OPACITY_VALUES = [0.10, 0.25, 0.50, 0.75, 0.80, 0.90, 1.00]
@@ -147,14 +219,24 @@ class WindowAnnotationsMixin:
         if sel_annot and self.renderer.doc:
             try:
                 page = self.renderer.doc.load_page(sel_annot["page_idx"])
+                before_snap = AnnotationManager.snapshot_from_annot(page, sel_annot["page_idx"], sel_annot["xref"])
                 annot = AnnotationManager._resolve_annot(page, sel_annot["xref"])
                 if annot:
                     rgb = (self.current_color.red, self.current_color.green, self.current_color.blue)
                     annot.set_colors(stroke=rgb)
                     annot.set_opacity(self.current_color.alpha)
                     annot.update()
-                    self.has_unsaved_changes = True
-                    self._update_save_state()
+                    after_snap = AnnotationManager.snapshot_from_annot(page, sel_annot["page_idx"], annot.xref)
+                    if before_snap and after_snap:
+                        self._record_annotation_command(
+                            AnnotationCommand(
+                                action="modify",
+                                page_idx=sel_annot["page_idx"],
+                                before=before_snap,
+                                after=after_snap,
+                                current_xref=annot.xref,
+                            )
+                        )
                     bounds = sel_annot.get("bounds")
                     self._render_view()
                     if bounds:
@@ -174,11 +256,20 @@ class WindowAnnotationsMixin:
 
         try:
             page = self.renderer.doc.load_page(sel_annot["page_idx"])
+            before_snap = AnnotationManager.snapshot_from_annot(page, sel_annot["page_idx"], sel_annot["xref"])
             AnnotationManager.delete_annot(page, sel_annot["xref"])
+            if before_snap:
+                self._record_annotation_command(
+                    AnnotationCommand(
+                        action="delete",
+                        page_idx=sel_annot["page_idx"],
+                        before=before_snap,
+                        after=None,
+                        current_xref=None,
+                    )
+                )
             self.selected_annotation = None
             self.selection.clear_selection()
-            self.has_unsaved_changes = True
-            self._update_save_state()
             self.popover.popdown()
             self._render_view()
             self.set_status(_("delete_annotation") + " realizada.")

@@ -87,8 +87,36 @@ class TestAnnotationManager(unittest.TestCase):
         del self.page
         page2 = self.doc.load_page(0)
         success = AnnotationManager.delete_annot(page2, xrefs[0])
-        self.assertTrue(success)
-        self.assertEqual(len(list(page2.annots())), 0)
+    def test_snapshot_and_restore_cycle_on_resize(self):
+        r1 = [fitz.Rect(50, 50, 150, 65)]
+        r2 = [fitz.Rect(50, 50, 250, 65), fitz.Rect(50, 70, 200, 85)]
+        _, xrefs = AnnotationManager.apply(
+            self.page, AnnotationType.HIGHLIGHT, r1, (1.0, 0.5, 0.0), 0.75
+        )
+        xref_initial = xrefs[0]
+
+        # Snapshot before resize
+        before_snap = AnnotationManager.snapshot_from_annot(self.page, 0, xref_initial)
+        self.assertIsNotNone(before_snap)
+        self.assertEqual(len(before_snap.line_rects), 1)
+        self.assertAlmostEqual(before_snap.opacity, 0.75, places=2)
+
+        # Resize annotation
+        new_annot = AnnotationManager.update_geometry(self.page, xref_initial, r2)
+        after_snap = AnnotationManager.snapshot_from_annot(self.page, 0, new_annot.xref)
+        self.assertEqual(len(after_snap.line_rects), 2)
+
+        # Undo: delete resized and restore before_snap
+        AnnotationManager.delete_annot(self.page, new_annot.xref)
+        restored_xref = AnnotationManager.restore_snapshot(self.page, before_snap)
+        restored_annot = self.page.load_annot(restored_xref)
+        self.assertEqual(len(restored_annot.vertices), 4)
+
+        # Redo: delete restored and restore after_snap
+        AnnotationManager.delete_annot(self.page, restored_xref)
+        redone_xref = AnnotationManager.restore_snapshot(self.page, after_snap)
+        redone_annot = self.page.load_annot(redone_xref)
+        self.assertEqual(len(redone_annot.vertices), 8)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,7 @@
-"""PDF annotation manager for highlights, underlines, and notes."""
-
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,6 +10,27 @@ if TYPE_CHECKING:
 from .constants import AnnotationType
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class AnnotationSnapshot:
+    """Serializable snapshot of an annotation's state."""
+    page_idx: int
+    annot_type: AnnotationType
+    line_rects: list[fitz.Rect]
+    color: tuple[float, float, float]
+    opacity: float = 1.0
+    content: str = ""
+
+
+@dataclass
+class AnnotationCommand:
+    """Action recorded for Undo and Redo operations."""
+    action: str  # "create", "delete", "modify"
+    page_idx: int
+    before: AnnotationSnapshot | None = None
+    after: AnnotationSnapshot | None = None
+    current_xref: int | None = None
 
 
 class AnnotationManager:
@@ -23,6 +43,7 @@ class AnnotationManager:
         line_rects: list[fitz.Rect],
         color: tuple[float, float, float],
         opacity: float = 1.0,
+        content: str = "",
     ) -> tuple[str, list[int]]:
         """Apply an annotation to the given page.
 
@@ -61,8 +82,9 @@ class AnnotationManager:
             return "Underline", [annot.xref]
 
         elif annotation_type == AnnotationType.NOTE:
+            text_content = content if content else "Nota criada no editor"
             annot = page.add_text_annot(
-                line_rects[0].tl, "Nota criada no editor"
+                line_rects[0].tl, text_content
             )
             annot.set_colors(stroke=color)
             annot.set_opacity(opacity)
@@ -187,3 +209,65 @@ class AnnotationManager:
         except Exception as exc:
             log.error("Failed to delete annotation: %s", exc)
             return False
+
+    @staticmethod
+    def snapshot_from_annot(
+        page: fitz.Page, page_idx: int, annot_or_xref: fitz.Annot | int
+    ) -> AnnotationSnapshot | None:
+        """Create an AnnotationSnapshot from an existing annotation."""
+        import fitz
+
+        annot = AnnotationManager._resolve_annot(page, annot_or_xref)
+        if annot is None:
+            return None
+
+        # Resolve annotation type
+        t_val = annot.type[0]
+        if t_val == fitz.PDF_ANNOT_UNDERLINE:
+            annot_type = AnnotationType.UNDERLINE
+        elif t_val == fitz.PDF_ANNOT_TEXT:
+            annot_type = AnnotationType.NOTE
+        else:
+            annot_type = AnnotationType.HIGHLIGHT
+
+        # Reconstruct line rects
+        line_rects: list[fitz.Rect] = []
+        vertices = annot.vertices
+        if vertices and len(vertices) >= 4:
+            for i in range(0, len(vertices), 4):
+                pts = vertices[i : i + 4]
+                if len(pts) == 4:
+                    x0 = min(p[0] for p in pts)
+                    y0 = min(p[1] for p in pts)
+                    x1 = max(p[0] for p in pts)
+                    y1 = max(p[1] for p in pts)
+                    line_rects.append(fitz.Rect(x0, y0, x1, y1))
+        if not line_rects:
+            line_rects = [annot.rect]
+
+        colors = annot.colors or {}
+        stroke = colors.get("stroke") or (1.0, 1.0, 0.0)
+        opacity = annot.opacity if annot.opacity >= 0 else 1.0
+        content = (annot.info or {}).get("content", "")
+
+        return AnnotationSnapshot(
+            page_idx=page_idx,
+            annot_type=annot_type,
+            line_rects=line_rects,
+            color=(stroke[0], stroke[1], stroke[2]) if len(stroke) >= 3 else (1.0, 1.0, 0.0),
+            opacity=opacity,
+            content=content,
+        )
+
+    @staticmethod
+    def restore_snapshot(page: fitz.Page, snapshot: AnnotationSnapshot) -> int:
+        """Restore an annotation from a snapshot onto the page. Returns its new xref."""
+        _, xrefs = AnnotationManager.apply(
+            page=page,
+            annotation_type=snapshot.annot_type,
+            line_rects=snapshot.line_rects,
+            color=snapshot.color,
+            opacity=snapshot.opacity,
+            content=snapshot.content,
+        )
+        return xrefs[0]

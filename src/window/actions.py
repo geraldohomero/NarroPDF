@@ -40,6 +40,7 @@ class WindowActionsMixin:
             ("show-about", self._on_show_about),
             ("show-settings", self._on_show_settings),
             ("undo", self._on_undo),
+            ("redo", self._on_redo),
             ("toggle-search", self._on_toggle_search),
             ("set-tool-selection", lambda *_: self.btn_tool_select.set_active(True)),
             ("set-tool-hand", lambda *_: self.btn_tool_hand.set_active(True)),

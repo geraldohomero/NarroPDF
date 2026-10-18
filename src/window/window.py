@@ -73,6 +73,8 @@ class MainWindow(
         self.current_color.parse("yellow")
         self.has_unsaved_changes: bool = False
         self.annotation_history: list[tuple[int, list[int]]] = []
+        self.undo_stack: list = []
+        self.redo_stack: list = []
         self.btn_sidebar_pause: Gtk.Button | None = None
         self._is_navigating: bool = False
 

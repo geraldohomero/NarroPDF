@@ -56,6 +56,8 @@ class WindowNavigationMixin:
             self.tts.set_document(doc)
             self.has_unsaved_changes = False
             self.annotation_history.clear()
+            self.undo_stack.clear()
+            self.redo_stack.clear()
             self._update_save_state()
 
             # Switch view to layout container if needed
@@ -274,6 +276,11 @@ class WindowNavigationMixin:
                 self._drag_started = True
                 self.popover.popdown()
                 self.selection_layer.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
+                if self.renderer.doc:
+                    page = self.renderer.doc.load_page(self.current_page)
+                    self._resize_before_snapshot = AnnotationManager.snapshot_from_annot(
+                        page, self.current_page, self.selected_annotation["xref"]
+                    )
 
     def _on_single_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float) -> None:
         if self.tool_mode != ToolMode.HAND:
@@ -317,6 +324,19 @@ class WindowNavigationMixin:
                         try:
                             page = self.renderer.doc.load_page(self.current_page)
                             new_annot = AnnotationManager.update_geometry(page, sel_annot["xref"], line_rects)
+                            after_snap = AnnotationManager.snapshot_from_annot(page, self.current_page, new_annot.xref)
+                            if getattr(self, "_resize_before_snapshot", None) and after_snap:
+                                from ..annotations import AnnotationCommand
+                                self._record_annotation_command(
+                                    AnnotationCommand(
+                                        action="modify",
+                                        page_idx=self.current_page,
+                                        before=self._resize_before_snapshot,
+                                        after=after_snap,
+                                        current_xref=new_annot.xref,
+                                    )
+                                )
+                            self._resize_before_snapshot = None
                             bounds = self.selection.get_selected_bounds()
                             self.selected_annotation = {
                                 "page_idx": self.current_page,
@@ -435,6 +455,11 @@ class WindowNavigationMixin:
                 if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
                     widget = self.renderer.page_widgets[page_idx]["drawing_area"]
                     widget.set_cursor(Gdk.Cursor.new_from_name("ew-resize", None))
+                if self.renderer.doc:
+                    page = self.renderer.doc.load_page(page_idx)
+                    self._resize_before_snapshot = AnnotationManager.snapshot_from_annot(
+                        page, page_idx, self.selected_annotation["xref"]
+                    )
 
     def _on_continuous_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float, page_idx: int) -> None:
         if self.tool_mode != ToolMode.HAND:
@@ -494,6 +519,19 @@ class WindowNavigationMixin:
                         try:
                             page = self.renderer.doc.load_page(self._drag_page_idx)
                             new_annot = AnnotationManager.update_geometry(page, sel_annot["xref"], line_rects)
+                            after_snap = AnnotationManager.snapshot_from_annot(page, self._drag_page_idx, new_annot.xref)
+                            if getattr(self, "_resize_before_snapshot", None) and after_snap:
+                                from ..annotations import AnnotationCommand
+                                self._record_annotation_command(
+                                    AnnotationCommand(
+                                        action="modify",
+                                        page_idx=self._drag_page_idx,
+                                        before=self._resize_before_snapshot,
+                                        after=after_snap,
+                                        current_xref=new_annot.xref,
+                                    )
+                                )
+                            self._resize_before_snapshot = None
                             bounds = self.selection.get_selected_bounds()
                             self.selected_annotation = {
                                 "page_idx": self._drag_page_idx,
