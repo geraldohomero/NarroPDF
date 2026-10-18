@@ -235,12 +235,17 @@ class WindowTtsMixin:
                     if v_name not in voices:
                         voices.append(v_name)
                         
+        if not voices:
+            recommended = PIPER_VOICES.get(code)
+            if recommended:
+                voices.append(recommended["name"])
+
         return voices
 
     def _on_engine_row_changed(self, row: Adw.ComboRow, pspec: Any) -> None:
         idx = row.get_selected()
         if idx != Gtk.INVALID_LIST_POSITION:
-            self.current_engine = "edge" if idx == 0 else "piper"
+            self.current_engine = "piper" if idx == 0 else "edge"
             self._update_voices_for_lang_code(self.current_language)
 
     def _refresh_lang_combo_model(self) -> None:

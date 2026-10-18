@@ -81,7 +81,7 @@ class MainWindow(
         self._initial_scroll_y: float = 0.0
 
         # Piper Engine state
-        self.current_engine: str = "edge"
+        self.current_engine: str = "piper"
 
         # Search state
         self.search_query: str = ""

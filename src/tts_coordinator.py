@@ -128,7 +128,7 @@ class TtsCoordinator:
         self.voice: str = ""
         self.language: str = DEFAULT_LANGUAGE
         self.speed_factor: float = 1.0
-        self.engine: str = "edge"
+        self.engine: str = "piper"
 
         # State
         self.is_playing: bool = False
@@ -218,7 +218,7 @@ class TtsCoordinator:
         voice: str,
         language: str = DEFAULT_LANGUAGE,
         speed_factor: float = 1.0,
-        engine: str = "edge",
+        engine: str = "piper",
     ) -> None:
         """Start reading aloud from the given page and sentence index."""
         self.stop()
@@ -583,10 +583,23 @@ class TtsCoordinator:
         if not shutil.which(piper_path):
             raise RuntimeError("piper command not found")
 
+        voice = self.voice
+        if not voice:
+            recommended = PIPER_VOICES.get(self.language, PIPER_VOICES[DEFAULT_LANGUAGE])
+            voice = recommended["name"]
+
         voices_dir = os.path.expanduser("~/.local/share/narro-pdf/voices/")
-        model_path = os.path.join(voices_dir, f"{self.voice}.onnx")
+        model_path = os.path.join(voices_dir, f"{voice}.onnx")
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file {model_path} not found")
+            recommended = PIPER_VOICES.get(self.language, PIPER_VOICES.get(DEFAULT_LANGUAGE))
+            if recommended and (voice == recommended["name"] or not self.voice):
+                os.makedirs(voices_dir, exist_ok=True)
+                from urllib.request import urlretrieve
+                self._emit_status(f"Baixando modelo Piper ({recommended['name']})...")
+                urlretrieve(recommended["onnx"], model_path)
+                urlretrieve(recommended["json"], model_path + ".json")
+            else:
+                raise FileNotFoundError(f"Model file {model_path} not found")
 
         fd, output_path = tempfile.mkstemp(prefix="narro_piper_", suffix=".wav")
         os.close(fd)

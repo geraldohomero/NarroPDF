@@ -429,11 +429,12 @@ class WindowUiMixin:
         sidebar_box.append(tts_group)
 
         # Engine row inside sidebar preferences
-        self.engine_model = Gtk.StringList.new(["Edge TTS", "Piper TTS"])
+        self.engine_model = Gtk.StringList.new(["Piper TTS", "Edge TTS"])
         self.engine_row = Adw.ComboRow(
             title=_("engine"),
             model=self.engine_model,
         )
+        self.engine_row.set_selected(0)
         self.engine_row.connect("notify::selected", self._on_engine_row_changed)
         tts_group.add(self.engine_row)
 

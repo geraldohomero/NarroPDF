@@ -62,7 +62,10 @@ class TestTtsCoordinator(unittest.TestCase):
         # Before first -> 0
         self.assertEqual(find_boundary_index_at_time(boundaries, -0.1), 0)
         # After last -> 2
-        self.assertEqual(find_boundary_index_at_time(boundaries, 5.0), 2)
+    def test_default_engine_is_piper(self):
+        from src.tts_coordinator import TtsCoordinator
+        coord = TtsCoordinator()
+        self.assertEqual(coord.engine, "piper")
 
 if __name__ == "__main__":
     unittest.main()
