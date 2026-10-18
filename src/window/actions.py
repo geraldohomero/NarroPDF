@@ -41,6 +41,7 @@ class WindowActionsMixin:
             ("show-settings", self._on_show_settings),
             ("undo", self._on_undo),
             ("redo", self._on_redo),
+            ("copy-text", self._on_copy_selected_text),
             ("toggle-search", self._on_toggle_search),
             ("set-tool-selection", lambda *_: self.btn_tool_select.set_active(True)),
             ("set-tool-hand", lambda *_: self.btn_tool_hand.set_active(True)),
@@ -146,9 +147,17 @@ class WindowActionsMixin:
         shortcut_underline.set_visible(True)
         group_tools.append(shortcut_underline)
 
+        shortcut_copy = Gtk.ShortcutsShortcut(accelerator="<Control>c", title=_("copy_text"))
+        shortcut_copy.set_visible(True)
+        group_tools.append(shortcut_copy)
+
         shortcut_undo = Gtk.ShortcutsShortcut(accelerator="<Control>z", title=_("undo_action"))
         shortcut_undo.set_visible(True)
         group_tools.append(shortcut_undo)
+
+        shortcut_redo = Gtk.ShortcutsShortcut(accelerator="<Control><Shift>z", title=_("redo_action"))
+        shortcut_redo.set_visible(True)
+        group_tools.append(shortcut_redo)
 
         section.append(group_tools)
 

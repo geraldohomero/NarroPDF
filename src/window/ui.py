@@ -387,6 +387,11 @@ class WindowUiMixin:
         btn_note.connect("clicked", lambda _: self._apply_annotation(AnnotationType.NOTE))
         pop_box.append(btn_note)
 
+        btn_copy = Gtk.Button(tooltip_text=_("copy_text"))
+        btn_copy.set_icon_name("edit-copy-symbolic")
+        btn_copy.connect("clicked", lambda _: self._on_copy_selected_text())
+        pop_box.append(btn_copy)
+
         btn_speak = Gtk.Button(tooltip_text=_("speak_selection"))
         btn_speak.set_icon_name("audio-volume-high-symbolic")
         btn_speak.connect("clicked", lambda _: self._on_read_selection())

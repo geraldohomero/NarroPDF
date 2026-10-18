@@ -113,6 +113,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "voices_visibility": "Visibilidade das Vozes",
         "piper_voices_mgmt": "Gerenciamento do Piper",
         "edge_voices_mgmt": "Gerenciamento do Edge TTS",
+        "copy_text": "Copiar Texto",
+        "copied_to_clipboard": "Texto copiado para a área de transferência.",
+        "redo_action": "Refazer",
+        "page_singular": "Página",
+        "play_pause": "Reproduzir / Pausar",
         "downloading_percent": "Baixando: {percent}%",
         "status_success": "Download concluído com sucesso!",
     },
@@ -206,10 +211,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "voices_visibility": "Voices Visibility",
         "piper_voices_mgmt": "Piper Management",
         "edge_voices_mgmt": "Edge TTS Management",
+        "copy_text": "Copy Text",
+        "copied_to_clipboard": "Text copied to clipboard.",
+        "redo_action": "Redo",
+        "page_singular": "Page",
+        "play_pause": "Play / Pause",
         "downloading_percent": "Downloading: {percent}%",
         "status_success": "Download completed successfully!",
     }
 }
+
+
+def set_language(lang_code: str) -> None:
+    """Explicitly set application language ('pt' or 'en')."""
+    global LANG
+    if lang_code in TRANSLATIONS:
+        LANG = lang_code
 
 
 def _(key: str) -> str:

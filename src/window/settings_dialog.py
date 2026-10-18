@@ -121,9 +121,33 @@ class SettingsDialog(Adw.PreferencesWindow):
         # Initialize pages
         self._setup_piper_page()
         self._setup_edge_page()
+        self._setup_hotkeys_page()
         
         # Load catalogs in background
         self._load_catalogs()
+
+    def _setup_hotkeys_page(self) -> None:
+        """Sets up the Keyboard Shortcuts reference page."""
+        from ..constants import get_shortcut_groups
+
+        hotkeys_page = Adw.PreferencesPage(
+            title=_("keyboard_shortcuts"),
+            icon_name="preferences-desktop-keyboard-shortcuts-symbolic"
+        )
+
+        for group in get_shortcut_groups():
+            pref_group = Adw.PreferencesGroup(title=_(group["title_key"]))
+            hotkeys_page.add(pref_group)
+
+            for item in group["items"]:
+                row = Adw.ActionRow(title=_(item["title_key"]))
+                label = Gtk.Label(label=item["accel_label"])
+                label.add_css_class("dim-label")
+                label.set_valign(Gtk.Align.CENTER)
+                row.add_suffix(label)
+                pref_group.add(row)
+
+        self.add(hotkeys_page)
 
     def _load_catalogs(self) -> None:
         # Load Piper catalog

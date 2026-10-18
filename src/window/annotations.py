@@ -276,6 +276,17 @@ class WindowAnnotationsMixin:
         except Exception as exc:
             log.error("Failed to delete selected annotation: %s", exc)
 
+    def _on_copy_selected_text(self, action: Gio.SimpleAction = None, param: Any = None) -> None:
+        """Copies currently selected text to the system clipboard."""
+        text = self.selection.get_selected_text()
+        if not text:
+            return
+        clipboard = Gdk.Display.get_default().get_clipboard()
+        clipboard.set(text)
+        if hasattr(self, "popover"):
+            self.popover.popdown()
+        self.set_status(_("copied_to_clipboard"))
+
     def _update_save_state(self) -> None:
         if self.has_unsaved_changes:
             self.btn_save.add_css_class("suggested-action")
