@@ -299,6 +299,8 @@ class WindowAnnotationsMixin:
                     self._render_view()
                     if hasattr(self, "_reload_annotations_tab"):
                         self._reload_annotations_tab()
+                    if hasattr(self, "_sync_sidebar_annotation_selection"):
+                        self._sync_sidebar_annotation_selection(sel_annot["page_idx"], annot.xref)
                     if bounds:
                         self.selection.set_selection_bounds(bounds[0], bounds[1])
                     if hasattr(self, "selection_layer"):
@@ -334,6 +336,8 @@ class WindowAnnotationsMixin:
             self._render_view()
             if hasattr(self, "_reload_annotations_tab"):
                 self._reload_annotations_tab()
+            if hasattr(self, "_sync_sidebar_annotation_selection"):
+                self._sync_sidebar_annotation_selection(None, None)
             self.set_status(_("delete_annotation") + " realizada.")
         except Exception as exc:
             log.error("Failed to delete selected annotation: %s", exc)

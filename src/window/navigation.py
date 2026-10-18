@@ -247,7 +247,11 @@ class WindowNavigationMixin:
                     pt = (x / self.renderer.zoom, y / self.renderer.zoom)
                     annot_hit = AnnotationManager.find_at_point(page, pt)
                     if annot_hit:
-                        bounds = self.selection.find_word_range_for_vertices(annot_hit.vertices)
+                        bounds = (
+                            self._find_word_bounds_for_annot(annot_hit)
+                            if hasattr(self, "_find_word_bounds_for_annot")
+                            else self.selection.find_word_range_for_vertices(annot_hit.vertices)
+                        )
                         if bounds:
                             lo, hi = bounds
                             self.selected_annotation = {
@@ -256,12 +260,16 @@ class WindowNavigationMixin:
                                 "bounds": (lo, hi),
                             }
                             self.selection.set_selection_bounds(lo, hi)
+                            if hasattr(self, "_sync_sidebar_annotation_selection"):
+                                self._sync_sidebar_annotation_selection(self.current_page, annot_hit.xref)
                             self._show_selection_popover(self.selection_layer)
                             self.selection_layer.queue_draw()
                             return
 
                 # Single click on blank: clear selection
                 self.selected_annotation = None
+                if hasattr(self, "_sync_sidebar_annotation_selection"):
+                    self._sync_sidebar_annotation_selection(None, None)
                 self.popover.popdown()
                 self.selection.clear_selection()
                 self.selection_layer.queue_draw()
@@ -308,6 +316,8 @@ class WindowNavigationMixin:
                 if abs(offset_x) > 4 or abs(offset_y) > 4:
                     self._drag_started = True
                     self.selected_annotation = None
+                    if hasattr(self, "_sync_sidebar_annotation_selection"):
+                        self._sync_sidebar_annotation_selection(None, None)
                     self.selection.begin_drag(self._drag_start_x, self._drag_start_y, self.renderer.zoom)
             
             if self._drag_started:
@@ -350,6 +360,8 @@ class WindowNavigationMixin:
                             self._render_view()
                             if hasattr(self, "_reload_annotations_tab"):
                                 self._reload_annotations_tab()
+                            if hasattr(self, "_sync_sidebar_annotation_selection"):
+                                self._sync_sidebar_annotation_selection(self.current_page, new_annot.xref)
                             if bounds:
                                 self.selection.set_selection_bounds(bounds[0], bounds[1])
                         except Exception as exc:
@@ -407,6 +419,8 @@ class WindowNavigationMixin:
                     self.selection.set_words(self.renderer.page_widgets[page_idx]["words"])
                     
                 self.selected_annotation = None
+                if hasattr(self, "_sync_sidebar_annotation_selection"):
+                    self._sync_sidebar_annotation_selection(None, None)
                 hit = self.selection.begin_drag(x, y, self.renderer.zoom)
                 if hit:
                     self.selection.end_drag(0, 0, self.renderer.zoom)
@@ -430,7 +444,11 @@ class WindowNavigationMixin:
                         self.page_entry.set_text(str(self.current_page + 1))
                         if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
                             self.selection.set_words(self.renderer.page_widgets[page_idx]["words"])
-                        bounds = self.selection.find_word_range_for_vertices(annot_hit.vertices)
+                        bounds = (
+                            self._find_word_bounds_for_annot(annot_hit)
+                            if hasattr(self, "_find_word_bounds_for_annot")
+                            else self.selection.find_word_range_for_vertices(annot_hit.vertices)
+                        )
                         if bounds:
                             lo, hi = bounds
                             self.selected_annotation = {
@@ -439,6 +457,8 @@ class WindowNavigationMixin:
                                 "bounds": (lo, hi),
                             }
                             self.selection.set_selection_bounds(lo, hi)
+                            if hasattr(self, "_sync_sidebar_annotation_selection"):
+                                self._sync_sidebar_annotation_selection(page_idx, annot_hit.xref)
                             widget = self.renderer.page_widgets[page_idx]["drawing_area"]
                             self._show_selection_popover(widget)
                             for page_data in self.renderer.page_widgets:
@@ -446,6 +466,8 @@ class WindowNavigationMixin:
                             return
 
                 self.selected_annotation = None
+                if hasattr(self, "_sync_sidebar_annotation_selection"):
+                    self._sync_sidebar_annotation_selection(None, None)
                 self.popover.popdown()
                 self.selection.clear_selection()
                 for page_data in self.renderer.page_widgets:
@@ -496,6 +518,8 @@ class WindowNavigationMixin:
                 if abs(offset_x) > 4 or abs(offset_y) > 4:
                     self._drag_started = True
                     self.selected_annotation = None
+                    if hasattr(self, "_sync_sidebar_annotation_selection"):
+                        self._sync_sidebar_annotation_selection(None, None)
                     self.current_page = self._drag_page_idx
                     self._update_controls_sensitivity()
                     self.page_entry.set_text(str(self.current_page + 1))
@@ -554,6 +578,8 @@ class WindowNavigationMixin:
                             self._render_view()
                             if hasattr(self, "_reload_annotations_tab"):
                                 self._reload_annotations_tab()
+                            if hasattr(self, "_sync_sidebar_annotation_selection"):
+                                self._sync_sidebar_annotation_selection(self._drag_page_idx, new_annot.xref)
                             if bounds:
                                 self.selection.set_selection_bounds(bounds[0], bounds[1])
                         except Exception as exc:

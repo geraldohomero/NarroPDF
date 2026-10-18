@@ -296,37 +296,113 @@ class MainWindow(
         if hasattr(row, "_target_page"):
             self._navigate_to_page_index(row._target_page)
 
+    def _find_word_bounds_for_annot(self, annot: Any) -> tuple[int, int] | None:
+        if not annot:
+            return None
+        if hasattr(annot, "vertices") and annot.vertices:
+            bounds = self.selection.find_word_range_for_vertices(annot.vertices)
+            if bounds:
+                return bounds
+        r = getattr(annot, "rect", None)
+        if r is not None:
+            rect_pts = [(r.x0, r.y0), (r.x1, r.y0), (r.x0, r.y1), (r.x1, r.y1)]
+            bounds = self.selection.find_word_range_for_vertices(rect_pts)
+            if bounds:
+                return bounds
+            cx = ((r.x0 + r.x1) / 2.0) * self.renderer.zoom
+            cy = ((r.y0 + r.y1) / 2.0) * self.renderer.zoom
+            w_idx = self.selection._word_index_at(cx, cy, self.renderer.zoom)
+            if w_idx is not None:
+                return (w_idx, w_idx)
+        return None
+
+    def _scroll_to_annotation_rect(self, page_idx: int, rect: Any) -> None:
+        if not hasattr(self, "scroller") or not self.scroller or rect is None:
+            return
+        vadj = self.scroller.get_vadjustment()
+        if not vadj:
+            return
+
+        zoom = self.renderer.zoom
+        vp_h = vadj.get_page_size()
+        annot_h = (rect.y1 - rect.y0) * zoom
+
+        if self.view_mode == ViewMode.CONTINUOUS:
+            from ..constants import PAGE_SPACING
+            h_with_spacing = self.renderer.page_h + PAGE_SPACING
+            annot_y0 = PAGE_SPACING + page_idx * h_with_spacing + rect.y0 * zoom
+        else:
+            annot_y0 = rect.y0 * zoom
+
+        if vp_h > 0:
+            target_scroll = annot_y0 - max(40.0, (vp_h - annot_h) / 2.0)
+            max_scroll = max(0.0, vadj.get_upper() - vp_h)
+            target_scroll = max(vadj.get_lower(), min(target_scroll, max_scroll))
+        else:
+            target_scroll = max(0.0, annot_y0 - 80.0)
+
+        self._is_navigating = True
+        vadj.set_value(target_scroll)
+        self._is_navigating = False
+
+        if self.view_mode == ViewMode.CONTINUOUS:
+            self.renderer.lazy_render_visible_pages(
+                vadj.get_value(), vp_h if vp_h > 0 else 800.0, self._on_continuous_page_rendered
+            )
+
+    def _sync_sidebar_annotation_selection(self, page_idx: int | None, xref: int | None) -> None:
+        if not hasattr(self, "left_annots_list") or not self.left_annots_list:
+            return
+        if page_idx is None or xref is None:
+            self.left_annots_list.unselect_all()
+            return
+
+        i = 0
+        while True:
+            row = self.left_annots_list.get_row_at_index(i)
+            if row is None:
+                break
+            if getattr(row, "_target_page", None) == page_idx and getattr(row, "_xref", None) == xref:
+                self.left_annots_list.select_row(row)
+                return
+            i += 1
+        self.left_annots_list.unselect_all()
+
     def _on_left_annotation_row_activated(self, list_box: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
         if not hasattr(row, "_target_page"):
             return
 
+        if hasattr(list_box, "select_row"):
+            list_box.select_row(row)
+
         page_idx = row._target_page
         self._navigate_to_page_index(page_idx)
+        self._scroll_to_annotation_rect(page_idx, getattr(row, "_target_rect", None))
 
-        # In continuous mode, scroll to the annotation
-        if self.view_mode == ViewMode.CONTINUOUS and hasattr(self, "scroller"):
-            from ..constants import PAGE_SPACING
-            h_with_spacing = self.renderer.page_h + PAGE_SPACING
-            target_y = (page_idx * h_with_spacing) + (row._target_rect.y0 * self.renderer.zoom)
-            v_adj = self.scroller.get_vadjustment()
-            if v_adj:
-                v_adj.set_value(max(0, target_y - 80))
-
-        # Select the annotation
+        # Select the annotation on the PDF
         if self.renderer.doc:
             from ..annotations import AnnotationManager
             page = self.renderer.doc.load_page(page_idx)
-            words = self.renderer.page_words if self.view_mode != ViewMode.CONTINUOUS else (
-                self.renderer.page_widgets[page_idx]["words"] if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets) else []
-            )
-            self.selection.set_words(words)
+            if self.view_mode == ViewMode.CONTINUOUS:
+                words = []
+                if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
+                    words = self.renderer.page_widgets[page_idx]["words"]
+                    if not words:
+                        words = TextSelectionHandler.extract_words(page)
+                        self.renderer.page_widgets[page_idx]["words"] = words
+                else:
+                    words = TextSelectionHandler.extract_words(page)
+                self.selection.set_words(words)
+            else:
+                if not self.selection.page_words:
+                    self.selection.set_words(TextSelectionHandler.extract_words(page))
+
             annot = AnnotationManager._resolve_annot(page, row._xref)
             bounds = (0, 0)
-            if annot and hasattr(annot, "vertices") and annot.vertices:
-                v_bounds = self.selection.find_word_range_for_vertices(annot.vertices)
-                if v_bounds:
-                    bounds = v_bounds
-                    self.selection.set_selection_bounds(bounds[0], bounds[1])
+            v_bounds = self._find_word_bounds_for_annot(annot)
+            if v_bounds:
+                bounds = v_bounds
+                self.selection.set_selection_bounds(bounds[0], bounds[1])
             self.selected_annotation = {
                 "page_idx": page_idx,
                 "xref": row._xref,
@@ -357,6 +433,11 @@ class MainWindow(
             self._is_navigating = True
             vadj.set_value(min(target_y, vadj.get_upper() - vadj.get_page_size()))
             self._is_navigating = False
+
+            vp_h = vadj.get_page_size()
+            self.renderer.lazy_render_visible_pages(
+                vadj.get_value(), vp_h if vp_h > 0 else 800.0, self._on_continuous_page_rendered
+            )
 
             if self.renderer.page_widgets and idx < len(self.renderer.page_widgets):
                 self.selection.set_words(self.renderer.page_widgets[idx]["words"])
