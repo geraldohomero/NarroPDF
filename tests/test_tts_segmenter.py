@@ -59,6 +59,31 @@ class TestTtsSegmenter(unittest.TestCase):
         self.assertEqual(len(paragraphs), 0)
         self.assertEqual(len(sentences), 0)
 
+    def test_hyphenated_words_across_lines_are_joined_in_sentence_text(self):
+        doc = fitz.open()
+        page = doc.new_page(width=500, height=700)
+        page.insert_text((72, 100), "Algo-")
+        page.insert_text((72, 115), "rithmic recommendation works.")
+        _, sentences = TtsSegmenter.segment_page(page, 0)
+        self.assertEqual(len(sentences), 1)
+        self.assertIn("Algorithmic", sentences[0].text)
+        self.assertNotIn("Algo- rithmic", sentences[0].text)
+
+    def test_page_number_and_margin_artifacts_filtered(self):
+        doc = fitz.open()
+        page = doc.new_page(width=500, height=700)
+        # Top header number at y=20 (< 28)
+        page.insert_text((250, 20), "42")
+        # Body text
+        page.insert_text((72, 200), "O conteúdo principal desta página.")
+        # Bottom footer number at y=685 (> 672)
+        page.insert_text((250, 685), "43")
+        _, sentences = TtsSegmenter.segment_page(page, 0)
+        full_text = " ".join(s.text for s in sentences)
+        self.assertIn("O conteúdo principal", full_text)
+        self.assertNotIn("42", full_text)
+        self.assertNotIn("43", full_text)
+
 if __name__ == "__main__":
     unittest.main()
 

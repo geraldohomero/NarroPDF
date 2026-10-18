@@ -81,6 +81,9 @@ class TtsSegmenter:
             if not block_raw_words:
                 continue
 
+            if cls._is_margin_artifact(block_raw_words, page.rect):
+                continue
+
             # Build full text for block while preserving word offsets
             block_words: list[TtsWord] = []
             block_text_parts: list[str] = []
@@ -91,27 +94,67 @@ class TtsSegmenter:
                 if not w_text:
                     continue
 
-                if block_text_parts:
-                    block_text_parts.append(" ")
-                    curr_pos += 1
-
-                start = curr_pos
-                end = curr_pos + len(w_text)
-                block_text_parts.append(w_text)
-                curr_pos = end
-
+                line_no = w[6]
                 rect = fitz.Rect(float(w[0]), float(w[1]), float(w[2]), float(w[3]))
-                block_words.append(
-                    TtsWord(
-                        text=w_text,
-                        rect=rect,
-                        word_index=w_idx,
-                        char_start=start,
-                        char_end=end,
-                        block_no=w[5],
-                        line_no=w[6],
+
+                # Check if this word continues a hyphenated word from the previous line
+                is_hyphen_continuation = False
+                if block_words:
+                    prev_w = block_words[-1]
+                    if (
+                        prev_w.text.endswith("-")
+                        and len(prev_w.text) > 1
+                        and prev_w.text[:-1].isalpha()
+                        and line_no > prev_w.line_no
+                        and w_text[0].islower()
+                    ):
+                        is_hyphen_continuation = True
+
+                if is_hyphen_continuation:
+                    prev_part = block_text_parts[-1]
+                    if prev_part.endswith("-"):
+                        block_text_parts[-1] = prev_part[:-1]
+                        curr_pos -= 1
+                        prev_w.char_end -= 1
+                        prev_w.text = prev_w.text[:-1]
+
+                    start = curr_pos
+                    end = curr_pos + len(w_text)
+                    block_text_parts.append(w_text)
+                    curr_pos = end
+
+                    block_words.append(
+                        TtsWord(
+                            text=w_text,
+                            rect=rect,
+                            word_index=w_idx,
+                            char_start=start,
+                            char_end=end,
+                            block_no=w[5],
+                            line_no=line_no,
+                        )
                     )
-                )
+                else:
+                    if block_text_parts:
+                        block_text_parts.append(" ")
+                        curr_pos += 1
+
+                    start = curr_pos
+                    end = curr_pos + len(w_text)
+                    block_text_parts.append(w_text)
+                    curr_pos = end
+
+                    block_words.append(
+                        TtsWord(
+                            text=w_text,
+                            rect=rect,
+                            word_index=w_idx,
+                            char_start=start,
+                            char_end=end,
+                            block_no=w[5],
+                            line_no=line_no,
+                        )
+                    )
 
             if not block_words:
                 continue
@@ -274,4 +317,41 @@ class TtsSegmenter:
                     best_match = (sentence, word.word_index)
 
         return best_match
+
+    @classmethod
+    def _is_margin_artifact(cls, words: list[tuple], page_rect: fitz.Rect) -> bool:
+        """Determines if a block is an isolated page number, header/footer artifact, or margin watermark."""
+        if not words:
+            return True
+
+        min_x = min(w[0] for w in words)
+        min_y = min(w[1] for w in words)
+        max_x = max(w[2] for w in words)
+        max_y = max(w[3] for w in words)
+
+        block_text = "".join(str(w[4]).strip() for w in words).strip()
+        if not block_text:
+            return True
+
+        h = page_rect.height
+        w = page_rect.width
+
+        # Top or bottom margin page numbers / short labels
+        is_top = max_y <= h * 0.05
+        is_bottom = min_y >= h * 0.95
+        if is_top or is_bottom:
+            cleaned = re.sub(r'[\s\-_/|•·]', '', block_text.lower())
+            if cleaned.isdigit():
+                return True
+            if cleaned.startswith("pág") or cleaned.startswith("pag") or cleaned.startswith("page"):
+                suffix = re.sub(r'^(pág|pag|page)\.?', '', cleaned)
+                if suffix.isdigit():
+                    return True
+
+        # Extreme left or right vertical watermarks/slugs
+        if (max_x <= 35 or min_x >= w - 35) and (max_y - min_y) > (max_x - min_x) * 4:
+            return True
+
+        return False
+
 
