@@ -118,6 +118,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "redo_action": "Refazer",
         "page_singular": "Página",
         "play_pause": "Reproduzir / Pausar",
+        "note_content": "Conteúdo da nota:",
         "downloading_percent": "Baixando: {percent}%",
         "status_success": "Download concluído com sucesso!",
     },
@@ -216,6 +217,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "redo_action": "Redo",
         "page_singular": "Page",
         "play_pause": "Play / Pause",
+        "note_content": "Note content:",
         "downloading_percent": "Downloading: {percent}%",
         "status_success": "Download completed successfully!",
     }

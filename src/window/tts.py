@@ -145,6 +145,17 @@ class WindowTtsMixin:
                     self.btn_sidebar_pause.set_icon_name("media-playback-pause-symbolic")
                     self.btn_sidebar_pause.set_tooltip_text(_("pause"))
 
+    def _apply_detected_language_silently(self, suggested: str) -> None:
+        """Silently sets document language and updates voice selection."""
+        active_langs = self.settings.get("active_languages", ["pt-BR", "en-US", "es-ES"])
+        chosen = suggested if suggested in active_langs else (active_langs[0] if active_langs else "pt-BR")
+        self.current_language = chosen
+        if hasattr(self, "lang_row"):
+            if chosen in active_langs:
+                idx = active_langs.index(chosen)
+                self.lang_row.set_selected(idx)
+        self._update_voices_for_lang_code(chosen)
+
     def _prompt_document_language(self, suggested: str) -> None:
         dialog = Adw.Dialog(title=_("doc_lang"))
         dialog.set_content_width(340)

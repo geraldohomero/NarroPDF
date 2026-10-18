@@ -43,6 +43,10 @@ class WindowAnnotationsMixin:
         if not line_rects:
             return
 
+        if annot_type == AnnotationType.NOTE and not content:
+            self._prompt_note_dialog(annot_type)
+            return
+
         page = self.renderer.doc.load_page(self.current_page)
         rgb = (self.current_color.red, self.current_color.green, self.current_color.blue)
         opacity = self.current_color.alpha
@@ -66,6 +70,54 @@ class WindowAnnotationsMixin:
         except Exception as exc:
             log.error("Failed to apply annotation: %s", exc)
             self.set_status(f"{_('err_apply_annot')}: {exc}")
+
+    def _prompt_note_dialog(self, annot_type: AnnotationType) -> None:
+        """Prompt user for note text before creating a NOTE annotation."""
+        dialog = Adw.Dialog(title=_("add_note"))
+        dialog.set_content_width(360)
+        dialog.set_content_height(200)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+
+        label = Gtk.Label(label=_("note_content"))
+        label.set_xalign(0.0)
+        box.append(label)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_vexpand(True)
+        scroller.set_min_content_height(100)
+        scroller.add_css_class("card")
+        text_view = Gtk.TextView()
+        text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        scroller.set_child(text_view)
+        box.append(scroller)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        actions.set_halign(Gtk.Align.END)
+
+        btn_cancel = Gtk.Button(label=_("cancel"))
+        btn_cancel.connect("clicked", lambda _: dialog.close())
+        actions.append(btn_cancel)
+
+        btn_confirm = Gtk.Button(label=_("confirm"), css_classes=["suggested-action"])
+
+        def on_confirm(_btn: Gtk.Button) -> None:
+            buf = text_view.get_buffer()
+            start, end = buf.get_bounds()
+            note_text = buf.get_text(start, end, True).strip()
+            dialog.close()
+            self._apply_annotation(annot_type, content=note_text or "Nota")
+
+        btn_confirm.connect("clicked", on_confirm)
+        actions.append(btn_confirm)
+
+        box.append(actions)
+        dialog.set_child(box)
+        dialog.present(self)
 
     def _on_undo(self, action: Gio.SimpleAction = None, param: Any = None) -> None:
         if not self.renderer.doc:

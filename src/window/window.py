@@ -178,7 +178,7 @@ class MainWindow(
         self.left_pages_list.remove_all()
         for i in range(len(self.renderer.doc)):
             row = Gtk.ListBoxRow()
-            label = Gtk.Label(label=f"{_('tab_pages')} {i + 1}")
+            label = Gtk.Label(label=f"{_('page_singular')} {i + 1}")
             label.set_xalign(0.0)
             label.set_margin_start(12)
             label.set_margin_top(8)
@@ -290,3 +290,12 @@ class MainWindow(
     def _on_settings_changed(self) -> None:
         self._refresh_lang_combo_model()
         self._update_voices_for_lang_code(self.current_language)
+
+    def _change_interface_lang(self, lang_code: str) -> None:
+        """Switch the application interface language and re-render translated strings."""
+        from ..locale import set_language
+        set_language(lang_code)
+        self.settings.set("app_language", lang_code)
+        self._refresh_ui_translations()
+        self.set_status(f"Idioma da interface alterado: {lang_code.upper()}")
+

@@ -21,6 +21,7 @@ from ..constants import (
     ZOOM_STEP,
     ViewMode,
     ToolMode,
+    AnnotationType,
 )
 from ..utils import detect_language_from_text
 from ..text_selection import TextSelectionHandler
@@ -72,9 +73,10 @@ class WindowNavigationMixin:
             for i in range(min(3, len(doc))):
                 sample_text += doc.load_page(i).get_text("text") or ""
             detected = detect_language_from_text(sample_text)
-            self._prompt_document_language(detected)
+            self._apply_detected_language_silently(detected)
 
             # Render
+            self.page_entry.set_text("1")
             self._render_view()
             self._reload_left_sidebar()
             self._update_cursor()
@@ -357,7 +359,14 @@ class WindowNavigationMixin:
             if self._drag_started:
                 has_sel = self.selection.end_drag(offset_x, offset_y, self.renderer.zoom)
                 if has_sel:
-                    self._show_selection_popover(self.selection_layer)
+                    if self.tool_mode == ToolMode.HIGHLIGHT:
+                        self._apply_annotation(AnnotationType.HIGHLIGHT)
+                    elif self.tool_mode == ToolMode.UNDERLINE:
+                        self._apply_annotation(AnnotationType.UNDERLINE)
+                    elif self.tool_mode == ToolMode.NOTE:
+                        self._apply_annotation(AnnotationType.NOTE)
+                    else:
+                        self._show_selection_popover(self.selection_layer)
                 self.selection_layer.queue_draw()
 
     def _on_selection_motion(self, controller: Gtk.EventControllerMotion, x: float, y: float) -> None:
@@ -555,8 +564,15 @@ class WindowNavigationMixin:
             if self._drag_started:
                 has_sel = self.selection.end_drag(offset_x, offset_y, self.renderer.zoom)
                 if has_sel:
-                    widget = self.renderer.page_widgets[self._drag_page_idx]["drawing_area"]
-                    self._show_selection_popover(widget)
+                    if self.tool_mode == ToolMode.HIGHLIGHT:
+                        self._apply_annotation(AnnotationType.HIGHLIGHT)
+                    elif self.tool_mode == ToolMode.UNDERLINE:
+                        self._apply_annotation(AnnotationType.UNDERLINE)
+                    elif self.tool_mode == ToolMode.NOTE:
+                        self._apply_annotation(AnnotationType.NOTE)
+                    else:
+                        widget = self.renderer.page_widgets[self._drag_page_idx]["drawing_area"]
+                        self._show_selection_popover(widget)
                 for page_data in self.renderer.page_widgets:
                     page_data["drawing_area"].queue_draw()
 

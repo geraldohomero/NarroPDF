@@ -677,5 +677,16 @@ class WindowUiMixin:
             annot_menu.append(_("underline"), "win.set-tool-underline")
             annot_menu.append(_("add_note"), "win.set-tool-note")
             self.btn_tool_annot_menu.set_menu_model(annot_menu)
+
+        if hasattr(self, 'engine_row'):
+            self.engine_row.set_title(_("engine"))
+        if hasattr(self, 'lang_row'):
+            self.lang_row.set_title(_("language"))
+        if hasattr(self, 'voice_row'):
+            self.voice_row.set_title(_("voice"))
+        if hasattr(self, 'total_pages_label') and getattr(self, "renderer", None) and self.renderer.doc:
+            self.total_pages_label.set_text(f"{_('page_of')} {len(self.renderer.doc)}")
+        if hasattr(self, '_refresh_lang_combo_model'):
+            self._refresh_lang_combo_model()
             
         self._reload_left_sidebar()
