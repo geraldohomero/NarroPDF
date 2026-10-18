@@ -119,6 +119,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "page_singular": "Página",
         "play_pause": "Reproduzir / Pausar",
         "note_content": "Conteúdo da nota:",
+        "tab_annotations": "Anotações",
+        "no_annotations": "Nenhuma anotação",
         "downloading_percent": "Baixando: {percent}%",
         "status_success": "Download concluído com sucesso!",
     },
@@ -218,6 +220,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "page_singular": "Page",
         "play_pause": "Play / Pause",
         "note_content": "Note content:",
+        "tab_annotations": "Annotations",
+        "no_annotations": "No annotations",
         "downloading_percent": "Downloading: {percent}%",
         "status_success": "Download completed successfully!",
     }

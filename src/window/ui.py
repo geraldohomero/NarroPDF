@@ -293,6 +293,18 @@ class WindowUiMixin:
             scroller_chapters, "chapters", _("tab_chapters"), "view-list-bullet-symbolic"
         )
 
+        # Left Tab 3: Annotations
+        self.left_annots_list = Gtk.ListBox()
+        self.left_annots_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.left_annots_list.set_activate_on_single_click(True)
+        self.left_annots_list.connect("row-activated", self._on_left_annotation_row_activated)
+
+        scroller_annots = Gtk.ScrolledWindow()
+        scroller_annots.set_child(self.left_annots_list)
+        self.view_stack.add_titled_with_icon(
+            scroller_annots, "annotations", _("tab_annotations"), "comment-symbolic"
+        )
+
         self.split_view_left.set_sidebar(left_sidebar_box)
 
         # 4. Document Viewport
@@ -637,6 +649,11 @@ class WindowUiMixin:
                 chapters_page = self.view_stack.get_page(chapters_child)
                 if chapters_page:
                     chapters_page.set_title(_("tab_chapters"))
+            annots_child = self.view_stack.get_child_by_name("annotations")
+            if annots_child:
+                annots_page = self.view_stack.get_page(annots_child)
+                if annots_page:
+                    annots_page.set_title(_("tab_annotations"))
                 
         if hasattr(self, 'right_title_label'):
             self.right_title_label.set_label(_("audio_reading"))

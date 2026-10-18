@@ -271,3 +271,61 @@ class AnnotationManager:
             content=snapshot.content,
         )
         return xrefs[0]
+
+    @staticmethod
+    def list_all_annotations(doc: fitz.Document) -> list[dict]:
+        """Extract and summarize all annotations across all pages in the document."""
+        import fitz
+
+        results: list[dict] = []
+        if not doc:
+            return results
+
+        for page_idx in range(len(doc)):
+            try:
+                page = doc.load_page(page_idx)
+                for annot in page.annots():
+                    t_val = annot.type[0]
+                    if t_val == fitz.PDF_ANNOT_UNDERLINE:
+                        type_name = "Underline"
+                        annot_type = AnnotationType.UNDERLINE
+                    elif t_val == fitz.PDF_ANNOT_TEXT:
+                        type_name = "Note"
+                        annot_type = AnnotationType.NOTE
+                    elif t_val == fitz.PDF_ANNOT_HIGHLIGHT:
+                        type_name = "Highlight"
+                        annot_type = AnnotationType.HIGHLIGHT
+                    else:
+                        continue
+
+                    rect = annot.rect
+                    info = annot.info or {}
+                    content = info.get("content", "").strip()
+
+                    # Extract underlying page text for highlights and underlines
+                    if not content and annot_type in (AnnotationType.HIGHLIGHT, AnnotationType.UNDERLINE):
+                        content = page.get_textbox(rect).strip()
+
+                    if not content:
+                        content = type_name
+
+                    colors = annot.colors or {}
+                    stroke = colors.get("stroke") or (1.0, 1.0, 0.0)
+                    color = (stroke[0], stroke[1], stroke[2]) if len(stroke) >= 3 else (1.0, 1.0, 0.0)
+                    opacity = annot.opacity if annot.opacity >= 0 else 1.0
+
+                    results.append({
+                        "page_idx": page_idx,
+                        "xref": annot.xref,
+                        "type_name": type_name,
+                        "annot_type": annot_type,
+                        "text": content,
+                        "rect": rect,
+                        "color": color,
+                        "opacity": opacity,
+                    })
+            except Exception as exc:
+                log.error("Failed to extract annotations for page %d: %s", page_idx, exc)
+
+        return results
+

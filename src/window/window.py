@@ -1,6 +1,7 @@
 """Main window class coordinating modular mixins for NarroPDF."""
 
 import logging
+import math
 import os
 from typing import Any
 
@@ -213,6 +214,80 @@ class MainWindow(
             row.set_child(label)
             self.left_chapters_list.append(row)
 
+        # 3. Annotations Tab
+        if hasattr(self, "_reload_annotations_tab"):
+            self._reload_annotations_tab()
+
+    def _reload_annotations_tab(self) -> None:
+        if not hasattr(self, "left_annots_list"):
+            return
+        self.left_annots_list.remove_all()
+        if not self.renderer.doc:
+            return
+
+        from ..annotations import AnnotationManager
+        annots = AnnotationManager.list_all_annotations(self.renderer.doc)
+        if not annots:
+            row = Gtk.ListBoxRow()
+            label = Gtk.Label(label=_("no_annotations"))
+            label.set_sensitive(False)
+            label.set_margin_top(12)
+            label.set_margin_bottom(12)
+            row.set_child(label)
+            self.left_annots_list.append(row)
+            return
+
+        for item in annots:
+            row = Gtk.ListBoxRow()
+            row._target_page = item["page_idx"]
+            row._target_rect = item["rect"]
+            row._xref = item["xref"]
+            row._annot_type = item["annot_type"]
+
+            card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            card_box.set_margin_start(10)
+            card_box.set_margin_end(10)
+            card_box.set_margin_top(8)
+            card_box.set_margin_bottom(8)
+
+            header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+            # Small circular color dot
+            color_dot = Gtk.DrawingArea()
+            color_dot.set_content_width(10)
+            color_dot.set_content_height(10)
+            color_dot.set_valign(Gtk.Align.CENTER)
+            r, g, b = item["color"]
+            a = item.get("opacity", 1.0)
+
+            def draw_dot(_area, cr, _w, _h, cr_rgb=(r, g, b, a)):
+                cr.set_source_rgba(cr_rgb[0], cr_rgb[1], cr_rgb[2], cr_rgb[3])
+                cr.arc(5, 5, 4.5, 0, 2 * math.pi)
+                cr.fill()
+
+            color_dot.set_draw_func(draw_dot)
+            header_box.append(color_dot)
+
+            type_title = _("highlight") if item["type_name"] == "Highlight" else (_("underline") if item["type_name"] == "Underline" else _("add_note"))
+            badge_label = Gtk.Label(label=f"{type_title} • {_('page_singular')} {item['page_idx'] + 1}")
+            badge_label.add_css_class("dim-label")
+            badge_label.set_xalign(0.0)
+            header_box.append(badge_label)
+            card_box.append(header_box)
+
+            # Preview text
+            preview = item["text"].replace("\n", " ").strip()
+            if len(preview) > 60:
+                preview = preview[:57] + "..."
+            text_label = Gtk.Label(label=preview)
+            text_label.set_xalign(0.0)
+            text_label.set_wrap(True)
+            text_label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            card_box.append(text_label)
+
+            row.set_child(card_box)
+            self.left_annots_list.append(row)
+
     def _on_left_page_row_activated(self, list_box: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
         idx = row.get_index()
         self._navigate_to_page_index(idx)
@@ -220,6 +295,51 @@ class MainWindow(
     def _on_left_chapter_row_activated(self, list_box: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
         if hasattr(row, "_target_page"):
             self._navigate_to_page_index(row._target_page)
+
+    def _on_left_annotation_row_activated(self, list_box: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
+        if not hasattr(row, "_target_page"):
+            return
+
+        page_idx = row._target_page
+        self._navigate_to_page_index(page_idx)
+
+        # In continuous mode, scroll to the annotation
+        if self.view_mode == ViewMode.CONTINUOUS and hasattr(self, "scroller"):
+            from ..constants import PAGE_SPACING
+            h_with_spacing = self.renderer.page_h + PAGE_SPACING
+            target_y = (page_idx * h_with_spacing) + (row._target_rect.y0 * self.renderer.zoom)
+            v_adj = self.scroller.get_vadjustment()
+            if v_adj:
+                v_adj.set_value(max(0, target_y - 80))
+
+        # Select the annotation
+        if self.renderer.doc:
+            from ..annotations import AnnotationManager
+            page = self.renderer.doc.load_page(page_idx)
+            words = self.renderer.page_words if self.view_mode != ViewMode.CONTINUOUS else (
+                self.renderer.page_widgets[page_idx]["words"] if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets) else []
+            )
+            self.selection.set_words(words)
+            annot = AnnotationManager._resolve_annot(page, row._xref)
+            bounds = (0, 0)
+            if annot and hasattr(annot, "vertices") and annot.vertices:
+                v_bounds = self.selection.find_word_range_for_vertices(annot.vertices)
+                if v_bounds:
+                    bounds = v_bounds
+                    self.selection.set_selection_bounds(bounds[0], bounds[1])
+            self.selected_annotation = {
+                "page_idx": page_idx,
+                "xref": row._xref,
+                "bounds": bounds,
+            }
+            if self.view_mode == ViewMode.CONTINUOUS and self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
+                widget = self.renderer.page_widgets[page_idx]["drawing_area"]
+                self._show_selection_popover(widget)
+                for page_data in self.renderer.page_widgets:
+                    page_data["drawing_area"].queue_draw()
+            else:
+                self._show_selection_popover(self.selection_layer)
+                self.selection_layer.queue_draw()
 
     def _navigate_to_page_index(self, idx: int) -> None:
         if not self.renderer.doc or not (0 <= idx < len(self.renderer.doc)):

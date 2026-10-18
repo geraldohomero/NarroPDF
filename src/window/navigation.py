@@ -348,6 +348,8 @@ class WindowNavigationMixin:
                             self.has_unsaved_changes = True
                             self._update_save_state()
                             self._render_view()
+                            if hasattr(self, "_reload_annotations_tab"):
+                                self._reload_annotations_tab()
                             if bounds:
                                 self.selection.set_selection_bounds(bounds[0], bounds[1])
                         except Exception as exc:
@@ -550,6 +552,8 @@ class WindowNavigationMixin:
                             self.has_unsaved_changes = True
                             self._update_save_state()
                             self._render_view()
+                            if hasattr(self, "_reload_annotations_tab"):
+                                self._reload_annotations_tab()
                             if bounds:
                                 self.selection.set_selection_bounds(bounds[0], bounds[1])
                         except Exception as exc:

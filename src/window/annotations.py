@@ -66,6 +66,8 @@ class WindowAnnotationsMixin:
             self.selected_annotation = None
             self.selection.clear_selection()
             self._render_view()
+            if hasattr(self, "_reload_annotations_tab"):
+                self._reload_annotations_tab()
             self.set_status(f"{_('annot_applied')} {label}")
         except Exception as exc:
             log.error("Failed to apply annotation: %s", exc)
@@ -157,6 +159,8 @@ class WindowAnnotationsMixin:
         self.has_unsaved_changes = True
         self._update_save_state()
         self._render_view()
+        if hasattr(self, "_reload_annotations_tab"):
+            self._reload_annotations_tab()
         self.set_status("Ação desfeita.")
 
     def _on_redo(self, action: Gio.SimpleAction = None, param: Any = None) -> None:
@@ -197,6 +201,8 @@ class WindowAnnotationsMixin:
         self.has_unsaved_changes = True
         self._update_save_state()
         self._render_view()
+        if hasattr(self, "_reload_annotations_tab"):
+            self._reload_annotations_tab()
         self.set_status("Ação refeita.")
 
     def _get_closest_opacity_index(self, alpha: float) -> int:
@@ -291,6 +297,8 @@ class WindowAnnotationsMixin:
                         )
                     bounds = sel_annot.get("bounds")
                     self._render_view()
+                    if hasattr(self, "_reload_annotations_tab"):
+                        self._reload_annotations_tab()
                     if bounds:
                         self.selection.set_selection_bounds(bounds[0], bounds[1])
                     if hasattr(self, "selection_layer"):
@@ -324,6 +332,8 @@ class WindowAnnotationsMixin:
             self.selection.clear_selection()
             self.popover.popdown()
             self._render_view()
+            if hasattr(self, "_reload_annotations_tab"):
+                self._reload_annotations_tab()
             self.set_status(_("delete_annotation") + " realizada.")
         except Exception as exc:
             log.error("Failed to delete selected annotation: %s", exc)
