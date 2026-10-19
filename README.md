@@ -6,6 +6,8 @@
 
 **NarroPDF** é um leitor e anotador de arquivos PDF moderno, minimalista e acessível, desenvolvido em Python usando a biblioteca gráfica **GTK4** e **Libadwaita**. Ele combina visualização avançada de documentos, ferramentas de anotação de texto e um sintetizador de voz integrado (Text-to-Speech) com sincronização em tempo real.
 
+Outro aplicativo Narro: [Narro Read Selection Aloud](https://github.com/geraldohomero/Narro-Read-Selection-Aloud)
+
 ---
 
 ## Funcionalidades Principais
@@ -29,7 +31,8 @@
 - **Segurança de Salvamento**: Avisa e pergunta se deseja salvar caso existam alterações pendentes ao fechar o aplicativo.
 - **Interface Moderna**: Desenvolvido sob as diretrizes do GNOME, iniciando sempre maximizado e adaptável ao tamanho da tela.
 
-![alt text](image.png)
+
+![Application main window](main-window.png)
 
 ---
 
