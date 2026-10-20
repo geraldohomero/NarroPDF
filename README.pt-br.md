@@ -4,9 +4,7 @@
   <img src="flatpak/logo.png" alt="NarroPDF Logo" width="128"/>
 </p>
 
-<p align="center">
-  <a href="README.md">English</a> | <a href="README.pt-br.md">Português (Brasil)</a> | <a href="README.zh-cn.md">简体中文</a>
-</p>
+[English](README.md) | [Português (Brasil)](README.pt-br.md) | [简体中文](README.zh-cn.md)
 
 **NarroPDF** é um leitor e anotador de arquivos PDF moderno, minimalista e acessível, desenvolvido em Python usando a biblioteca gráfica **GTK4** e **Libadwaita**. Ele combina visualização avançada de documentos, ferramentas completas de anotação e um sintetizador de voz integrado (Text-to-Speech) com sincronização visual em tempo real.
 
@@ -131,3 +129,4 @@ O ícone do aplicativo segue a especificação de design de ícones do **GNOME /
 ## Licença
 
 Este projeto está licenciado sob a licença descrita no repositório. Consulte os arquivos de código-fonte para obter mais detalhes.
+

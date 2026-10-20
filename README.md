@@ -4,9 +4,7 @@
   <img src="flatpak/logo.png" alt="NarroPDF Logo" width="128"/>
 </p>
 
-<p align="center">
-  <a href="README.md">English</a> | <a href="README.pt-br.md">Português (Brasil)</a> | <a href="README.zh-cn.md">简体中文</a>
-</p>
+[English](README.md) | [Português (Brasil)](README.pt-br.md) | [简体中文](README.zh-cn.md)
 
 **NarroPDF** is a modern, minimalist, and accessible PDF reader and annotator built in Python using **GTK4** and **Libadwaita**. It combines advanced document viewing, rich text annotation tools, and an integrated Text-to-Speech (TTS) synthesizer with real-time visual synchronization.
 

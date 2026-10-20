@@ -4,9 +4,7 @@
   <img src="flatpak/logo.png" alt="NarroPDF Logo" width="128"/>
 </p>
 
-<p align="center">
-  <a href="README.md">English</a> | <a href="README.pt-br.md">Português (Brasil)</a> | <a href="README.zh-cn.md">简体中文</a>
-</p>
+[English](README.md) | [Português (Brasil)](README.pt-br.md) | [简体中文](README.zh-cn.md)
 
 **NarroPDF** 是一款现代、简约且注重无障碍体验的 PDF 阅读与批注工具，使用 Python 基于 **GTK4** 和 **Libadwaita** 库开发。它将先进的文档浏览、全套批注工具以及集成的实时同步文本转语音（Text-to-Speech, TTS）朗读功能融为一体。
 
@@ -131,3 +129,4 @@ flatpak install --user org.geraldohomero.NarroPdf.flatpak
 ## 开源许可
 
 本项目遵循本仓库中注明的开源许可协议。详细信息请参阅源代码文件。
+
