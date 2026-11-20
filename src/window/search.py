@@ -93,6 +93,8 @@ class WindowSearchMixin:
         return False
 
     def _scroll_to_match(self, page_idx: int, rect) -> None:
+        if hasattr(self, "_release_tts_follow_if_playing"):
+            self._release_tts_follow_if_playing()
         if self.view_mode == ViewMode.CONTINUOUS:
             from ..constants import PAGE_SPACING
             h_with_spacing = self.renderer.page_h + PAGE_SPACING

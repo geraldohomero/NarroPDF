@@ -123,6 +123,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "no_annotations": "Nenhuma anotação",
         "downloading_percent": "Baixando: {percent}%",
         "status_success": "Download concluído com sucesso!",
+        "follow_reading": "Seguir",
+        "follow_reading_active_tooltip": "Seguindo palavra ativa no centro (clique para rolar livremente)",
+        "follow_reading_inactive_tooltip": "Rolagem livre (clique para centralizar e seguir a leitura)",
     },
     "en": {
         "app_name": "NarroPDF",
@@ -224,6 +227,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "no_annotations": "No annotations",
         "downloading_percent": "Downloading: {percent}%",
         "status_success": "Download completed successfully!",
+        "follow_reading": "Follow",
+        "follow_reading_active_tooltip": "Following active word in center (click to scroll freely)",
+        "follow_reading_inactive_tooltip": "Free scroll (click to center and follow reading)",
     }
 }
 

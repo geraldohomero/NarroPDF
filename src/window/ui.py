@@ -351,9 +351,11 @@ class WindowUiMixin:
         self.selection_layer.add_controller(motion)
 
         scroll_ctrl = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+        scroll_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         scroll_ctrl.connect("scroll", self._on_mouse_scroll)
         self.scroller.add_controller(scroll_ctrl)
         self.scroller.get_vadjustment().connect("value-changed", self._on_viewport_scrolled)
+        self.scroller.get_vadjustment().connect("notify::page-size", self._on_viewport_page_size_changed)
 
         # Welcome screen
         self.welcome_page = Adw.StatusPage(
@@ -572,6 +574,18 @@ class WindowUiMixin:
         controls_box.append(btn_stop)
         self.playback_bar.append(controls_box)
 
+        self.btn_follow_tts = Gtk.ToggleButton()
+        self.btn_follow_tts_content = Adw.ButtonContent()
+        self.btn_follow_tts_content.set_icon_name("find-location-symbolic")
+        self.btn_follow_tts_content.set_label(_("follow_reading"))
+        self.btn_follow_tts.set_child(self.btn_follow_tts_content)
+        self.btn_follow_tts.set_valign(Gtk.Align.CENTER)
+        self.btn_follow_tts.set_active(True)
+        self.btn_follow_tts.add_css_class("suggested-action")
+        self.btn_follow_tts.set_tooltip_text(_("follow_reading_active_tooltip"))
+        self.btn_follow_tts.connect("toggled", self._on_follow_tts_toggled)
+        self.playback_bar.append(self.btn_follow_tts)
+
         self.status_label = Gtk.Label()
         self.status_label.add_css_class("status-label")
         self.status_label.set_hexpand(True)
@@ -637,6 +651,10 @@ class WindowUiMixin:
             self.btn_next_sent.set_tooltip_text(_("next_sentence"))
         if hasattr(self, 'btn_next_para'):
             self.btn_next_para.set_tooltip_text(_("next_paragraph"))
+        if hasattr(self, 'btn_follow_tts_content'):
+            self.btn_follow_tts_content.set_label(_("follow_reading"))
+        if hasattr(self, '_sync_follow_tts_button'):
+            self._sync_follow_tts_button()
 
         if hasattr(self, 'view_stack'):
             pages_child = self.view_stack.get_child_by_name("pages")
