@@ -50,6 +50,87 @@ class TtsSegmenter:
         "fig", "art", "cap", "pág", "pag", "vol", "av", "ed"
     }
 
+    HYPHEN_CHARS = ("-", "\u00ad", "\u2010", "\u2011")
+    TERMINAL_PUNCT = (".", "!", "?", "…", ":")
+    CLOSING_WRAPPERS = "\"'”’)]»"
+    NO_SPACE_BEFORE = {",", ".", ";", ":", "!", "?", "…", ")", "]", "»", "%"}
+    NO_SPACE_AFTER = {"(", "[", "«", "“", "‘"}
+
+    @classmethod
+    def _ends_with_terminal_punct(cls, text: str) -> bool:
+        stripped = text.strip().rstrip(cls.CLOSING_WRAPPERS)
+        if not stripped:
+            return False
+        if not stripped.endswith(cls.TERMINAL_PUNCT):
+            return False
+        if stripped.endswith("."):
+            m = re.search(r"([A-Za-zÀ-ÿ]+)\.$", stripped)
+            if m and m.group(1).lower() in cls.ABBREVIATIONS:
+                return False
+        return True
+
+    @classmethod
+    def _should_merge_blocks(cls, prev_block: list[tuple], next_block: list[tuple]) -> bool:
+        """Determine whether *next_block* is a continuation of the same paragraph/sentence as *prev_block*."""
+        if not prev_block or not next_block:
+            return False
+
+        last_text = str(prev_block[-1][4]).strip()
+        first_text = str(next_block[0][4]).strip()
+        if not last_text or not first_text:
+            return False
+
+        # Respect genuine sentence/paragraph endings
+        if cls._ends_with_terminal_punct(last_text):
+            return False
+
+        # Compute line-height and geometry metrics
+        prev_last_line_no = prev_block[-1][6]
+        prev_last_block_no = prev_block[-1][5]
+        prev_last_line = [
+            w for w in prev_block if w[5] == prev_last_block_no and w[6] == prev_last_line_no
+        ] or [prev_block[-1]]
+
+        next_first_line_no = next_block[0][6]
+        next_first_block_no = next_block[0][5]
+        next_first_line = [
+            w for w in next_block if w[5] == next_first_block_no and w[6] == next_first_line_no
+        ] or [next_block[0]]
+
+        prev_last_y0 = min(float(w[1]) for w in prev_last_line)
+        prev_last_y1 = max(float(w[3]) for w in prev_last_line)
+        prev_line_h = max(6.0, prev_last_y1 - prev_last_y0)
+
+        next_first_y0 = min(float(w[1]) for w in next_first_line)
+        next_first_y1 = max(float(w[3]) for w in next_first_line)
+        next_line_h = max(6.0, next_first_y1 - next_first_y0)
+
+        # Protect headings / different font sizes from merging into body text
+        if abs(prev_line_h - next_line_h) > max(prev_line_h, next_line_h) * 0.35:
+            return False
+
+        # Strong lexical continuation signals (comma, hyphenation, lowercase start, closing punct)
+        if last_text.endswith(cls.HYPHEN_CHARS) and first_text[0].islower():
+            return True
+        if last_text.endswith((",", ";", "(", "[", "«", "—", "–")):
+            return True
+        if first_text[0].islower() or first_text[0] in cls.NO_SPACE_BEFORE:
+            return True
+
+        # Visual same-column line continuation (e.g. wrapped line continuing with a proper noun)
+        prev_min_x = min(float(w[0]) for w in prev_block)
+        prev_max_x = max(float(w[2]) for w in prev_block)
+        next_min_x = min(float(w[0]) for w in next_block)
+        next_max_x = max(float(w[2]) for w in next_block)
+
+        horiz_overlap = min(prev_max_x, next_max_x) > max(prev_min_x, next_min_x)
+        avg_line_h = (prev_line_h + next_line_h) / 2.0
+        vertical_gap = next_first_y0 - prev_last_y1
+        vert_adjacent = (-avg_line_h * 0.5) <= vertical_gap <= (avg_line_h * 1.6)
+        not_short_heading = len(prev_block) >= 4 or (prev_max_x - prev_min_x) >= 180.0
+
+        return horiz_overlap and vert_adjacent and not_short_heading
+
     @classmethod
     def segment_page(
         cls, page: fitz.Page, page_index: int
@@ -64,7 +145,7 @@ class TtsSegmenter:
         # Sort words in natural reading order: block, line, word
         raw_words.sort(key=lambda w: (w[5], w[6], w[7]))
 
-        # Group words by block_no
+        # Group words by block_no and filter margin artifacts
         blocks: dict[int, list[tuple]] = {}
         for w in raw_words:
             b_idx = w[5]
@@ -72,16 +153,27 @@ class TtsSegmenter:
                 blocks[b_idx] = []
             blocks[b_idx].append(w)
 
+        filtered_blocks: list[list[tuple]] = []
+        for block_idx in sorted(blocks.keys()):
+            block_raw_words = blocks[block_idx]
+            if not block_raw_words or cls._is_margin_artifact(block_raw_words, page.rect):
+                continue
+            filtered_blocks.append(block_raw_words)
+
+        # Merge consecutive blocks that belong to the same sentence/paragraph
+        merged_blocks: list[list[tuple]] = []
+        for block in filtered_blocks:
+            if merged_blocks and cls._should_merge_blocks(merged_blocks[-1], block):
+                merged_blocks[-1].extend(block)
+            else:
+                merged_blocks.append(list(block))
+
         all_paragraphs: list[TtsParagraph] = []
         all_sentences: list[TtsSentence] = []
         global_sentence_idx = 0
 
-        for block_idx in sorted(blocks.keys()):
-            block_raw_words = blocks[block_idx]
+        for block_raw_words in merged_blocks:
             if not block_raw_words:
-                continue
-
-            if cls._is_margin_artifact(block_raw_words, page.rect):
                 continue
 
             # Build full text for block while preserving word offsets
@@ -90,29 +182,38 @@ class TtsSegmenter:
             curr_pos = 0
 
             for w_idx, w in enumerate(block_raw_words):
-                w_text = str(w[4]).strip()
+                w_text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", str(w[4])).strip()
                 if not w_text:
                     continue
 
                 line_no = w[6]
                 rect = fitz.Rect(float(w[0]), float(w[1]), float(w[2]), float(w[3]))
 
-                # Check if this word continues a hyphenated word from the previous line
+                # Check if this word continues a hyphenated word from the previous line/block
                 is_hyphen_continuation = False
                 if block_words:
                     prev_w = block_words[-1]
+                    is_new_line = (
+                        w[5] != prev_w.block_no
+                        or line_no > prev_w.line_no
+                        or rect.y0 >= (prev_w.rect.y1 - 2.0)
+                    )
                     if (
-                        prev_w.text.endswith("-")
+                        prev_w.text.endswith(cls.HYPHEN_CHARS)
                         and len(prev_w.text) > 1
                         and prev_w.text[:-1].isalpha()
-                        and line_no > prev_w.line_no
+                        and is_new_line
                         and w_text[0].islower()
                     ):
                         is_hyphen_continuation = True
 
+                # Remove any stray soft hyphens inside the current token
+                if "\u00ad" in w_text and not w_text.endswith("\u00ad"):
+                    w_text = w_text.replace("\u00ad", "")
+
                 if is_hyphen_continuation:
                     prev_part = block_text_parts[-1]
-                    if prev_part.endswith("-"):
+                    if prev_part.endswith(cls.HYPHEN_CHARS):
                         block_text_parts[-1] = prev_part[:-1]
                         curr_pos -= 1
                         prev_w.char_end -= 1
@@ -136,8 +237,14 @@ class TtsSegmenter:
                     )
                 else:
                     if block_text_parts:
-                        block_text_parts.append(" ")
-                        curr_pos += 1
+                        prev_w = block_words[-1]
+                        attach_directly = (
+                            all(ch in cls.NO_SPACE_BEFORE for ch in w_text)
+                            or (prev_w.text and prev_w.text[-1] in cls.NO_SPACE_AFTER)
+                        )
+                        if not attach_directly:
+                            block_text_parts.append(" ")
+                            curr_pos += 1
 
                     start = curr_pos
                     end = curr_pos + len(w_text)

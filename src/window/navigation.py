@@ -26,7 +26,7 @@ from ..constants import (
     ToolMode,
     AnnotationType,
 )
-from ..utils import detect_language_from_text
+from ..utils import detect_language_from_text, normalize_text_for_tts
 from ..text_selection import TextSelectionHandler
 from ..annotations import AnnotationManager
 from ..locale import _
@@ -117,7 +117,7 @@ class WindowNavigationMixin:
                 self.selection.set_words(TextSelectionHandler.extract_words(page))
                 
                 # Extracted text sidebar
-                self.text_buffer.set_text(page.get_text("text") or "")
+                self.text_buffer.set_text(normalize_text_for_tts(page.get_text("text") or ""))
                 self.selection_layer.queue_draw()
 
             self.page_entry.set_text(str(self.current_page + 1))
@@ -238,7 +238,7 @@ class WindowNavigationMixin:
             
             # Sync extracted text sidebar
             page = self.renderer.doc.load_page(self.current_page)
-            self.text_buffer.set_text(page.get_text("text") or "")
+            self.text_buffer.set_text(normalize_text_for_tts(page.get_text("text") or ""))
 
             # Sync selection words
             if self.renderer.page_widgets and self.current_page < len(self.renderer.page_widgets):
@@ -462,7 +462,7 @@ class WindowNavigationMixin:
                 self._update_controls_sensitivity()
                 self.page_entry.set_text(str(self.current_page + 1))
                 page = self.renderer.doc.load_page(page_idx)
-                self.text_buffer.set_text(page.get_text("text") or "")
+                self.text_buffer.set_text(normalize_text_for_tts(page.get_text("text") or ""))
                 
                 if self.renderer.page_widgets and page_idx < len(self.renderer.page_widgets):
                     self.selection.set_words(self.renderer.page_widgets[page_idx]["words"])
@@ -573,7 +573,7 @@ class WindowNavigationMixin:
                     self._update_controls_sensitivity()
                     self.page_entry.set_text(str(self.current_page + 1))
                     page = self.renderer.doc.load_page(self._drag_page_idx)
-                    self.text_buffer.set_text(page.get_text("text") or "")
+                    self.text_buffer.set_text(normalize_text_for_tts(page.get_text("text") or ""))
                     
                     if self.renderer.page_widgets and self._drag_page_idx < len(self.renderer.page_widgets):
                         self.selection.set_words(self.renderer.page_widgets[self._drag_page_idx]["words"])
@@ -1022,7 +1022,7 @@ class WindowNavigationMixin:
                     self._update_controls_sensitivity()
                 if hasattr(self, "text_buffer"):
                     page = self.renderer.doc.load_page(self.current_page)
-                    self.text_buffer.set_text(page.get_text("text") or "")
+                    self.text_buffer.set_text(normalize_text_for_tts(page.get_text("text") or ""))
                 page_widgets = getattr(self.renderer, "page_widgets", None)
                 if (
                     hasattr(self, "selection")
