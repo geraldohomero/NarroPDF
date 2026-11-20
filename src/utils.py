@@ -20,15 +20,17 @@ def normalize_text_for_tts(text: str) -> str:
     normalized = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", normalized)
 
     # Join hyphenated line breaks: "exem-\nplo" → "exemplo".
-    normalized = re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "", normalized)
+    normalized = re.sub(r"(?<=\w)[-\u00ad\u2010\u2011]\s*\n\s*(?=\w)", "", normalized)
+    normalized = normalized.replace("\u00ad", "")
 
     # Preserve paragraphs: single newlines become spaces, double newlines kept.
     normalized = re.sub(r"(?<!\n)\n(?!\n)", " ", normalized)
     normalized = re.sub(r"\n{2,}", "\n\n", normalized)
 
-    # Fix spaces before punctuation and collapse excess whitespace.
-    normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
-    normalized = re.sub(r"\s{2,}", " ", normalized)
+    # Fix spaces before punctuation and collapse excess horizontal whitespace.
+    normalized = re.sub(r"[ \t]+([,.;:!?])", r"\1", normalized)
+    normalized = re.sub(r"[ \t]{2,}", " ", normalized)
+    normalized = re.sub(r"[ \t]*\n\n[ \t]*", "\n\n", normalized)
 
     # Fix broken abbreviations: "n ." → "n."
     normalized = re.sub(
