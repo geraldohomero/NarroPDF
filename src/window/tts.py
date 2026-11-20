@@ -64,9 +64,59 @@ class WindowTtsMixin:
             rate_val = int(self.speed_scale.get_value())
             speed_factor = 1.0 + (rate_val / 100.0)
 
+        if hasattr(self, "_set_tts_follow_active"):
+            self._set_tts_follow_active(True)
+
         self.tts.start_playback(
             page_idx, sentence_idx, voice, self.current_language, speed_factor, self.current_engine
         )
+
+    def _set_tts_follow_active(self, active: bool, recenter: bool = False) -> None:
+        """Update TTS follow state, sync the toggle button, and optionally re-center."""
+        self.tts_follow_active = bool(active)
+        self._sync_follow_tts_button()
+        if (
+            self.tts_follow_active
+            and recenter
+            and getattr(self, "active_tts_sentence", None) is not None
+            and hasattr(self, "_scroll_to_tts_word")
+        ):
+            self._scroll_to_tts_word(
+                self.active_tts_sentence,
+                getattr(self, "active_tts_word_index", -1),
+                force=True,
+            )
+
+    def _sync_follow_tts_button(self) -> None:
+        if not hasattr(self, "btn_follow_tts") or not self.btn_follow_tts:
+            return
+        active = bool(getattr(self, "tts_follow_active", True))
+        self._updating_follow_toggle = True
+        try:
+            self.btn_follow_tts.set_active(active)
+            if active:
+                self.btn_follow_tts.add_css_class("suggested-action")
+                self.btn_follow_tts.set_tooltip_text(_("follow_reading_active_tooltip"))
+            else:
+                self.btn_follow_tts.remove_css_class("suggested-action")
+                self.btn_follow_tts.set_tooltip_text(_("follow_reading_inactive_tooltip"))
+        finally:
+            self._updating_follow_toggle = False
+
+    def _on_follow_tts_toggled(self, button: Gtk.ToggleButton) -> None:
+        if getattr(self, "_updating_follow_toggle", False):
+            return
+        active = button.get_active()
+        self._set_tts_follow_active(active, recenter=active)
+
+    def _release_tts_follow_if_playing(self) -> None:
+        """Auto-release follow mode on manual navigation while TTS is playing."""
+        if (
+            getattr(self, "tts", None)
+            and getattr(self.tts, "is_playing", False)
+            and getattr(self, "tts_follow_active", False)
+        ):
+            self._set_tts_follow_active(False)
 
     def _on_pdf_double_clicked(self, page_idx: int, x: float, y: float) -> None:
         """Start or jump playback when user double-clicks on text in the PDF."""

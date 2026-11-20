@@ -45,6 +45,8 @@ ZOOM_PRESETS: list[float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 # ---------------------------------------------------------------------------
 
 PAGE_SPACING: int = 8
+# .pdf-page-shadow in style.css adds margin: 8px 24px (16px vertical) + border: 1px (2px vertical)
+PAGE_SHADOW_VERTICAL_CHROME: int = 18
 WORD_HIT_THRESHOLD_PX: int = 60
 
 # ---------------------------------------------------------------------------

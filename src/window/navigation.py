@@ -7,7 +7,8 @@ from typing import Any
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Gio, GObject, Gtk
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, Gdk, GLib, Gio, GObject, Graphene, Gtk
 
 try:
     import fitz
@@ -19,6 +20,8 @@ from ..constants import (
     MIN_ZOOM,
     MAX_ZOOM,
     ZOOM_STEP,
+    PAGE_SPACING,
+    PAGE_SHADOW_VERTICAL_CHROME,
     ViewMode,
     ToolMode,
     AnnotationType,
@@ -52,6 +55,9 @@ class WindowNavigationMixin:
             self.pdf_path = path
             self.current_page = 0
             self.selected_annotation = None
+            self._last_tts_scroll_value = None
+            if hasattr(self, "_set_tts_follow_active"):
+                self._set_tts_follow_active(True)
             self.selection.clear_selection()
             self.renderer.set_document(doc)
             self.tts.set_document(doc)
@@ -122,16 +128,25 @@ class WindowNavigationMixin:
         
         target = self.current_page + step
         if 0 <= target < len(self.renderer.doc):
+            if hasattr(self, "_release_tts_follow_if_playing"):
+                self._release_tts_follow_if_playing()
             self.current_page = target
             self._update_controls_sensitivity()
             self.page_entry.set_text(str(self.current_page + 1))
 
             if self.view_mode == ViewMode.CONTINUOUS:
-                h_with_spacing = self.renderer.page_h + 24
-                target_y = target * h_with_spacing
+                page_heights = getattr(self.renderer, "page_heights", None)
+                if isinstance(page_heights, list) and len(page_heights) > target:
+                    target_y = PAGE_SPACING + sum(
+                        h + PAGE_SPACING + PAGE_SHADOW_VERTICAL_CHROME
+                        for h in page_heights[:target]
+                    )
+                else:
+                    h_with_spacing = self.renderer.page_h + PAGE_SPACING
+                    target_y = target * h_with_spacing
                 vadj = self.scroller.get_vadjustment()
                 self._is_navigating = True
-                vadj.set_value(min(target_y, vadj.get_upper() - vadj.get_page_size()))
+                vadj.set_value(min(target_y, max(0.0, vadj.get_upper() - vadj.get_page_size())))
                 self._is_navigating = False
             else:
                 self.selected_annotation = None
@@ -171,11 +186,43 @@ class WindowNavigationMixin:
         self.scroller.set_child(pages_box)
 
     def _on_viewport_scrolled(self, vadj: Gtk.Adjustment) -> None:
-        if not self.renderer.doc or self.view_mode != ViewMode.CONTINUOUS or self._is_navigating:
-            return
+        val_raw = vadj.get_value()
+        ps_raw = vadj.get_page_size()
+        up_raw = vadj.get_upper()
+        scroll_y = float(val_raw) if isinstance(val_raw, (int, float)) else 0.0
+        viewport_h = float(ps_raw) if isinstance(ps_raw, (int, float)) else 0.0
+        upper = float(up_raw) if isinstance(up_raw, (int, float)) else 0.0
 
-        scroll_y = vadj.get_value()
-        viewport_h = vadj.get_page_size()
+        prev_vp_h = getattr(self, "_last_vadj_page_size", 0.0)
+        prev_upper = getattr(self, "_last_vadj_upper", 0.0)
+        geometry_changed = (abs(viewport_h - prev_vp_h) > 0.5) or (abs(upper - prev_upper) > 0.5)
+        self._last_vadj_page_size = viewport_h
+        self._last_vadj_upper = upper
+
+        if (
+            not getattr(self, "_is_navigating", False)
+            and not getattr(self, "_is_tts_auto_scrolling", False)
+            and not getattr(self, "_is_zooming", False)
+            and getattr(self, "tts", None)
+            and getattr(self.tts, "is_playing", False)
+            and getattr(self, "tts_follow_active", False)
+        ):
+            if geometry_changed:
+                if getattr(self, "active_tts_sentence", None) is not None and hasattr(self, "_recenter_active_tts_word"):
+                    GLib.idle_add(self._recenter_active_tts_word)
+            else:
+                last_tts_scroll = getattr(self, "_last_tts_scroll_value", None)
+                if last_tts_scroll is None or abs(scroll_y - last_tts_scroll) > 4.0:
+                    if hasattr(self, "_set_tts_follow_active"):
+                        self._set_tts_follow_active(False)
+
+        if (
+            not self.renderer.doc
+            or self.view_mode != ViewMode.CONTINUOUS
+            or getattr(self, "_is_navigating", False)
+            or getattr(self, "_is_tts_auto_scrolling", False)
+        ):
+            return
 
         # Render visible pages
         active = self.renderer.lazy_render_visible_pages(
@@ -215,6 +262,8 @@ class WindowNavigationMixin:
 
     def _on_scroller_drag_update(self, gesture: Gtk.GestureDrag, offset_x: float, offset_y: float) -> None:
         if self.tool_mode == ToolMode.HAND:
+            if (abs(offset_x) > 2.0 or abs(offset_y) > 2.0) and hasattr(self, "_release_tts_follow_if_playing"):
+                self._release_tts_follow_if_playing()
             self.scroller.get_hadjustment().set_value(self._initial_scroll_x - offset_x)
             self.scroller.get_vadjustment().set_value(self._initial_scroll_y - offset_y)
 
@@ -649,6 +698,9 @@ class WindowNavigationMixin:
                 self._adjust_zoom(ZOOM_STEP)
             return True
 
+        if (dy != 0 or dx != 0) and hasattr(self, "_release_tts_follow_if_playing"):
+            self._release_tts_follow_if_playing()
+
         # Single page view layout scroll navigation fallback
         if self.view_mode == ViewMode.SINGLE:
             vadj = self.scroller.get_vadjustment()
@@ -674,7 +726,18 @@ class WindowNavigationMixin:
     def _set_zoom_val(self, zoom: float) -> None:
         val = max(MIN_ZOOM, min(MAX_ZOOM, zoom))
         self.renderer.set_zoom(val)
-        self._render_view()
+        self._is_zooming = True
+        try:
+            self._render_view()
+        finally:
+            self._is_zooming = False
+        if (
+            getattr(self, "tts", None)
+            and getattr(self.tts, "is_playing", False)
+            and getattr(self, "tts_follow_active", False)
+            and getattr(self, "active_tts_sentence", None) is not None
+        ):
+            GLib.idle_add(self._recenter_active_tts_word)
 
     def _on_zoom_to_activated(self, action: Gio.SimpleAction, parameter: GLib.Variant) -> None:
         zoom = parameter.get_double()
@@ -722,9 +785,20 @@ class WindowNavigationMixin:
         else:
             self.scroller.set_child(self.overlay)
 
-        self._render_view()
+        self._is_zooming = True
+        try:
+            self._render_view()
+        finally:
+            self._is_zooming = False
         self._update_cursor()
         self._update_controls_sensitivity()
+        if (
+            getattr(self, "tts", None)
+            and getattr(self.tts, "is_playing", False)
+            and getattr(self, "tts_follow_active", False)
+            and getattr(self, "active_tts_sentence", None) is not None
+        ):
+            GLib.idle_add(self._recenter_active_tts_word)
 
     def _on_tool_mode_toggled(self, button: Gtk.ToggleButton, mode: ToolMode | None) -> None:
         if button.get_active():
@@ -771,38 +845,193 @@ class WindowNavigationMixin:
             for page_data in self.renderer.page_widgets:
                 page_data["drawing_area"].set_cursor(cursor)
 
-    def _scroll_to_tts_sentence(self, sentence: Any) -> None:
-        """Ensure the active TTS sentence is scrolled into view smoothly."""
-        if not sentence or not sentence.line_rects:
-            return
+    def _on_viewport_page_size_changed(self, vadj: Gtk.Adjustment, pspec: Any) -> None:
+        if (
+            getattr(self, "tts", None)
+            and getattr(self.tts, "is_playing", False)
+            and getattr(self, "tts_follow_active", False)
+            and getattr(self, "active_tts_sentence", None) is not None
+            and not getattr(self, "_recenter_pending", False)
+        ):
+            self._recenter_pending = True
+            GLib.idle_add(self._recenter_active_tts_word)
 
-        from ..constants import ViewMode, PAGE_SPACING
+    def _recenter_active_tts_word(self) -> bool:
+        self._recenter_pending = False
+        if (
+            getattr(self, "tts", None)
+            and getattr(self.tts, "is_playing", False)
+            and getattr(self, "tts_follow_active", False)
+            and getattr(self, "active_tts_sentence", None) is not None
+        ):
+            self._scroll_to_tts_word(
+                self.active_tts_sentence,
+                getattr(self, "active_tts_word_index", -1),
+                force=True,
+            )
+        if hasattr(self, "scroller") and self.scroller:
+            vadj = self.scroller.get_vadjustment()
+            if vadj:
+                ps_raw = vadj.get_page_size()
+                if isinstance(ps_raw, (int, float)):
+                    self._last_vadj_page_size = float(ps_raw)
+        return False
+
+    def _compute_tts_target_scroll_y(
+        self, page_idx: int, word_center_y_in_page: float, vadj: Any
+    ) -> float:
+        curr_raw = vadj.get_value()
+        curr_scroll = float(curr_raw) if isinstance(curr_raw, (int, float)) else 0.0
+        ps_raw = vadj.get_page_size()
+        page_size = float(ps_raw) if isinstance(ps_raw, (int, float)) else 0.0
+        lower_raw = vadj.get_lower()
+        lower = float(lower_raw) if isinstance(lower_raw, (int, float)) else 0.0
+        upper_raw = vadj.get_upper()
+        upper = float(upper_raw) if isinstance(upper_raw, (int, float)) else page_size
+        max_scroll = max(lower, upper - page_size)
+
+        target_widget = None
+        if self.view_mode == ViewMode.CONTINUOUS:
+            page_widgets = getattr(self.renderer, "page_widgets", None)
+            if isinstance(page_widgets, list) and 0 <= page_idx < len(page_widgets):
+                target_widget = page_widgets[page_idx].get("drawing_area")
+        else:
+            target_widget = getattr(self, "selection_layer", None)
+
+        viewport = self.scroller.get_child() if hasattr(self.scroller, "get_child") else None
+        content_child = viewport.get_child() if isinstance(viewport, Gtk.Widget) else None
+        if (
+            isinstance(target_widget, Gtk.Widget)
+            and isinstance(content_child, Gtk.Widget)
+            and target_widget.get_allocated_height() > 0
+            and content_child.get_allocated_height() > 0
+        ):
+            point = Graphene.Point().init(0.0, float(word_center_y_in_page))
+            ok, pt = target_widget.compute_point(content_child, point)
+            if ok:
+                if self.view_mode == ViewMode.CONTINUOUS:
+                    content_offset = float(content_child.get_margin_top())
+                else:
+                    content_offset = PAGE_SHADOW_VERTICAL_CHROME / 2.0
+                word_global_y = content_offset + pt.y
+                raw_target = word_global_y - (page_size / 2.0)
+                return max(lower, min(raw_target, max_scroll))
 
         if self.view_mode == ViewMode.CONTINUOUS:
-            vadj = self.scroller.get_vadjustment()
-            if not vadj:
-                return
-
-            # Compute page vertical position in continuous mode
-            top_y_in_page = min(r.y0 for r in sentence.line_rects)
-            h_with_spacing = self.renderer.page_h + PAGE_SPACING
-            target_page_top = sentence.page_index * h_with_spacing
-            sentence_global_y = target_page_top + (top_y_in_page * self.renderer.zoom)
-
-            curr_scroll = vadj.get_value()
-            page_size = vadj.get_page_size()
-            viewport_bottom = curr_scroll + page_size
-
-            # If the sentence is out of bounds or in the lower 20% of the screen, scroll to it
-            if sentence_global_y < curr_scroll + 40 or sentence_global_y > (viewport_bottom - 100):
-                target_scroll = max(0.0, min(
-                    sentence_global_y - (page_size * 0.25),
-                    vadj.get_upper() - page_size
-                ))
-                self._is_navigating = True
-                vadj.set_value(target_scroll)
-                self._is_navigating = False
+            page_heights = getattr(self.renderer, "page_heights", None)
+            if isinstance(page_heights, list) and len(page_heights) > page_idx:
+                page_top = (
+                    PAGE_SPACING
+                    + (PAGE_SHADOW_VERTICAL_CHROME / 2.0)
+                    + sum(
+                        h + PAGE_SPACING + PAGE_SHADOW_VERTICAL_CHROME
+                        for h in page_heights[:page_idx]
+                    )
+                )
+            else:
+                stride = self.renderer.page_h + PAGE_SPACING + PAGE_SHADOW_VERTICAL_CHROME
+                page_top = PAGE_SPACING + (PAGE_SHADOW_VERTICAL_CHROME / 2.0) + (page_idx * stride)
+            word_global_y = page_top + word_center_y_in_page
         else:
-            if self.current_page != sentence.page_index:
-                self._navigate_to_page_index(sentence.page_index)
+            word_global_y = word_center_y_in_page
+
+        raw_target = word_global_y - (page_size / 2.0)
+        return max(lower, min(raw_target, max_scroll))
+
+    def _scroll_to_tts_word(
+        self, sentence: Any, word_idx: int = -1, force: bool = False
+    ) -> None:
+        """Center the active TTS word (or sentence) vertically in the viewport."""
+        if not sentence:
+            return
+        if not force and not getattr(self, "tts_follow_active", True):
+            return
+
+        zoom = float(getattr(self.renderer, "zoom", 1.0))
+        words = getattr(sentence, "words", None) or []
+        if 0 <= word_idx < len(words):
+            wr = words[word_idx].rect
+            word_center_y_in_page = ((wr.y0 + wr.y1) / 2.0) * zoom
+        elif getattr(sentence, "line_rects", None):
+            top_y = min(r.y0 for r in sentence.line_rects)
+            bot_y = max(r.y1 for r in sentence.line_rects)
+            word_center_y_in_page = ((top_y + bot_y) / 2.0) * zoom
+        else:
+            return
+
+        if (
+            self.view_mode == ViewMode.SINGLE
+            and getattr(self, "current_page", -1) != sentence.page_index
+            and hasattr(self, "_navigate_to_page_index")
+        ):
+            self._navigate_to_page_index(sentence.page_index, from_tts=True)
+
+        vadj = self.scroller.get_vadjustment()
+        if not vadj:
+            return
+
+        ps_raw = vadj.get_page_size()
+        page_size = float(ps_raw) if isinstance(ps_raw, (int, float)) else 0.0
+        if page_size <= 0:
+            return
+
+        curr_raw = vadj.get_value()
+        curr_scroll = float(curr_raw) if isinstance(curr_raw, (int, float)) else 0.0
+
+        target_scroll = self._compute_tts_target_scroll_y(
+            sentence.page_index, word_center_y_in_page, vadj
+        )
+
+        threshold = 1.0 if force else 6.0
+        if abs(target_scroll - curr_scroll) >= threshold:
+            self._is_tts_auto_scrolling = True
+            try:
+                vadj.set_value(target_scroll)
+            finally:
+                self._is_tts_auto_scrolling = False
+            self._last_tts_scroll_value = target_scroll
+            effective_scroll = target_scroll
+        else:
+            if getattr(self, "_last_tts_scroll_value", None) is None:
+                self._last_tts_scroll_value = curr_scroll
+            effective_scroll = curr_scroll
+
+        if self.view_mode == ViewMode.CONTINUOUS:
+            active = None
+            if hasattr(self.renderer, "lazy_render_visible_pages") and hasattr(
+                self, "_on_continuous_page_rendered"
+            ):
+                active = self.renderer.lazy_render_visible_pages(
+                    effective_scroll, page_size, self._on_continuous_page_rendered
+                )
+            if hasattr(self.renderer, "ensure_page_rendered") and hasattr(
+                self, "_on_continuous_page_rendered"
+            ):
+                self.renderer.ensure_page_rendered(
+                    sentence.page_index, self._on_continuous_page_rendered
+                )
+            if (
+                isinstance(active, int)
+                and active != getattr(self, "current_page", -1)
+                and getattr(self.renderer, "doc", None)
+            ):
+                self.current_page = active
+                if hasattr(self, "page_entry"):
+                    self.page_entry.set_text(str(self.current_page + 1))
+                if hasattr(self, "_update_controls_sensitivity"):
+                    self._update_controls_sensitivity()
+                if hasattr(self, "text_buffer"):
+                    page = self.renderer.doc.load_page(self.current_page)
+                    self.text_buffer.set_text(page.get_text("text") or "")
+                page_widgets = getattr(self.renderer, "page_widgets", None)
+                if (
+                    hasattr(self, "selection")
+                    and isinstance(page_widgets, list)
+                    and 0 <= self.current_page < len(page_widgets)
+                ):
+                    self.selection.set_words(page_widgets[self.current_page]["words"])
+
+    def _scroll_to_tts_sentence(self, sentence: Any) -> None:
+        """Ensure the active TTS sentence is scrolled into view smoothly."""
+        self._scroll_to_tts_word(sentence, getattr(self, "active_tts_word_index", -1))
 
